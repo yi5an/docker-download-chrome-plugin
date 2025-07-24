@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Docker 镜像下载进度</title>
+  <style>
+    body { font-family: sans-serif; min-width: 350px; margin: 0; padding: 10px; background: #f7f7f7; }
+    .task { background: #fff; border-radius: 6px; margin-bottom: 16px; box-shadow: 0 1px 4px #0001; padding: 12px; }
+    .task-title { font-weight: bold; margin-bottom: 4px; }
+    .task-meta { color: #888; font-size: 13px; margin-bottom: 6px; }
+    .progress-bar { background: #eee; border-radius: 4px; height: 8px; margin: 6px 0; }
+    .progress-bar-inner { background: #1890ff; height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .layer-list { font-size: 12px; margin-top: 8px; }
+    .layer-item { display: flex; align-items: center; margin-bottom: 2px; }
+    .layer-status { width: 60px; text-align: right; margin-left: 8px; }
+    .status-downloading { color: #1890ff; }
+    .status-done { color: #52c41a; }
+    .status-failed { color: #ff4d4f; }
+    .status-pending { color: #aaa; }
+    h3 { margin: 12px 0 4px 0; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <h2 style="margin-top:0;">下载进度</h2>
+  <div id="task-list"></div>
+  <script src="popup.js"></script>
+</body>
+</html> 

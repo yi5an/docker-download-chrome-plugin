@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Docker 镜像一键下载器",
+  "version": "0.1.0",
+  "description": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。",
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://hub.docker.com/*",
+    "https://registry-1.docker.io/*",
+    "http://123.57.165.38:7000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://hub.docker.com/r/*", "https://hub.docker.com/_/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  }
+} 
