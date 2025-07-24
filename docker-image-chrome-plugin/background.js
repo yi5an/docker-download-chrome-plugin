@@ -1,12 +1,14 @@
 // background.js
 // 代理 fetch，解决 CORS 问题，并输出详细日志
 
+import { PROXY_BASE } from './config.js';
+
 let tasks = [];
 let history = [];
 
 // 代理fetch通过中转服务器
 async function proxyFetch(url, options = {}, responseType = 'json') {
-  const proxyUrl = 'http://123.57.165.38:7000/proxy?url=' + encodeURIComponent(url);
+  const proxyUrl = PROXY_BASE + encodeURIComponent(url);
   const resp = await fetch(proxyUrl, options);
   if (!resp.ok) throw new Error('proxy fetch failed: ' + url);
   if (responseType === 'json') return await resp.json();

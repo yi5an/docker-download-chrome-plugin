@@ -2,7 +2,7 @@
 // 监听页面加载，识别DockerHub镜像tag列表页面，并在每个架构旁插入下载按钮（SVG图标，紧贴文本一行显示）
 
 // 通过中转服务器代理 fetch，解决 CORS 问题
-const PROXY_BASE = 'http://123.57.165.38:7000/proxy?url=';
+import { PROXY_BASE } from './config.js';
 /**
  * @param {string} url 原始目标URL
  * @param {object} options fetch参数

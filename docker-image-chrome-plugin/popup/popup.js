@@ -1,3 +1,5 @@
+import { PROXY_BASE } from '../config.js';
+
 function renderTasks(tasks, history) {
   const list = document.getElementById('task-list');
   let html = '';
