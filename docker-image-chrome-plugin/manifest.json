@@ -6,7 +6,9 @@
   "permissions": [
     "scripting",
     "activeTab",
-    "storage"
+    "storage",
+    "tabs",
+    "downloads"
   ],
   "host_permissions": [
     "https://hub.docker.com/*",
@@ -14,12 +16,18 @@
     "http://123.57.165.38:7000/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background-wrapper.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://hub.docker.com/r/*", "https://hub.docker.com/_/*"],
-      "js": ["content-script.js"],
+      "matches": [
+        "https://hub.docker.com/r/*/*",
+        "https://hub.docker.com/_/*",
+        "https://hub.docker.com/r/*/tags*",
+        "https://hub.docker.com/_/*/tags*",
+        "https://hub.docker.com/*/tags*"
+      ],
+      "js": ["config.js", "content-script.js"],
       "run_at": "document_end"
     }
   ],
@@ -36,4 +44,4 @@
       "128": "icon128.png"
     }
   }
-} 
+}

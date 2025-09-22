@@ -9,7 +9,7 @@
  * @param {string} arch 架构（如 amd64、arm64）
  * @returns {Promise<object>} manifest对象
  */
-export async function fetchManifest(image, tag, arch = 'amd64') {
+async function fetchManifest(image, tag, arch = 'amd64') {
   // 获取token
   const token = await getDockerToken(image);
   // 获取manifest（可能是manifest list）
@@ -48,7 +48,7 @@ export async function fetchManifest(image, tag, arch = 'amd64') {
  * @param {string} image 镜像名
  * @returns {Promise<string>} token
  */
-export async function getDockerToken(image) {
+async function getDockerToken(image) {
   const url = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image}:pull`;
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('获取token失败');
@@ -57,37 +57,362 @@ export async function getDockerToken(image) {
 }
 
 /**
- * 下载镜像所有layer（伪实现，后续完善分片、进度、解压等）
+ * 下载镜像所有layer（支持分片下载、进度回调、gzip解压）
  * @param {string} image 镜像名
  * @param {Array} layers 镜像layer数组
  * @param {string} token 认证token
- * @returns {Promise<ArrayBuffer[]>} 所有layer的二进制数据
+ * @param {Function} progressCallback 进度回调函数 (layerDigest, percent, status) => void
+ * @returns {Promise<{layerData: ArrayBuffer, layerId: string, digest: string}[]>} 所有layer的解压后数据及ID
  */
-export async function downloadLayers(image, layers, token) {
-  // 这里只做伪实现，后续需分片、进度、gzip解压
+async function downloadLayers(image, layers, token, progressCallback = () => {}) {
   const results = [];
-  for (const layer of layers) {
-    const url = `https://registry-1.docker.io/v2/${image}/blobs/${layer.digest}`;
-    const resp = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!resp.ok) throw new Error('下载layer失败:' + layer.digest);
-    const buf = await resp.arrayBuffer();
-    results.push(buf);
+  let parentId = ''; // 用于生成layer ID
+  
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    const digest = layer.digest;
+    const shortDigest = digest.substring(7, 19); // 截取digest的一部分用于显示
+    
+    // 生成layer ID（与Python版本相同的算法）
+    const layerId = await sha256Hash(`${parentId}\n${digest}\n`);
+    parentId = layerId; // 更新parentId用于下一层
+    
+    try {
+      // 更新状态为开始下载
+      progressCallback(digest, 0, 'downloading');
+      
+      // 获取文件大小
+      const url = `https://registry-1.docker.io/v2/${image}/blobs/${digest}`;
+      const headResp = await fetch(url, {
+        method: 'HEAD',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!headResp.ok) {
+        throw new Error(`获取layer信息失败: ${digest}`);
+      }
+      
+      const contentLength = parseInt(headResp.headers.get('Content-Length') || '0');
+      const chunkSize = 2 * 1024 * 1024; // 2MB分片
+      const chunks = [];
+      let downloaded = 0;
+      
+      // 分片下载
+      for (let start = 0; start < contentLength; start += chunkSize) {
+        const end = Math.min(start + chunkSize - 1, contentLength - 1);
+        const rangeResp = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Range': `bytes=${start}-${end}`
+          }
+        });
+        
+        if (!rangeResp.ok && rangeResp.status !== 206) {
+          throw new Error(`下载layer分片失败: ${digest}, 范围: ${start}-${end}`);
+        }
+        
+        const chunk = await rangeResp.arrayBuffer();
+        chunks.push(new Uint8Array(chunk));
+        
+        downloaded += chunk.byteLength;
+        const percent = Math.floor((downloaded / contentLength) * 100);
+        progressCallback(digest, percent, 'downloading');
+      }
+      
+      // 合并所有分片
+      const combinedLength = chunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+      const combinedArray = new Uint8Array(combinedLength);
+      let position = 0;
+      
+      for (const chunk of chunks) {
+        combinedArray.set(chunk, position);
+        position += chunk.byteLength;
+      }
+      
+      // 更新状态为解压中
+      progressCallback(digest, 100, 'extracting');
+      
+      // 解压gzip数据（使用pako库）
+      const uncompressed = await ungzip(combinedArray.buffer);
+      
+      progressCallback(digest, 100, 'done');
+      
+      // 保存解压后的数据和layer ID
+      results.push({
+        layerData: uncompressed,
+        layerId: layerId,
+        digest: digest
+      });
+      
+    } catch (error) {
+      progressCallback(digest, 0, 'failed');
+      throw error;
+    }
   }
+  
   return results;
 }
 
 /**
- * 打包为tar文件（伪实现，后续用tar-js等库实现）
- * @param {ArrayBuffer[]} layersData 所有layer的二进制数据
- * @returns {Blob} tar文件Blob
+ * 使用pako库解压gzip数据
+ * @param {ArrayBuffer} compressedData gzip压缩的数据
+ * @returns {Promise<ArrayBuffer>} 解压后的数据
  */
-export function packToTar(layersData) {
-  // 这里只做伪实现，后续用tar-js等库实现真正打包
-  // return new Blob([...layersData], {type: 'application/x-tar'});
-  // 占位：实际应将各layer和config等文件打包为标准docker镜像tar结构
-  return new Blob([new Uint8Array([0x54,0x41,0x52])], {type: 'application/x-tar'}); // 仅占位
+async function ungzip(compressedData) {
+  // 注意：这里假设已经引入了pako库
+  // 实际使用时需要确保pako库已正确引入
+  try {
+    // 使用Web Worker进行解压以避免阻塞主线程
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(URL.createObjectURL(new Blob([`
+        importScripts('https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js');
+        onmessage = function(e) {
+          try {
+            const result = pako.ungzip(new Uint8Array(e.data));
+            postMessage({success: true, data: result.buffer}, [result.buffer]);
+          } catch (error) {
+            postMessage({success: false, error: error.message});
+          }
+        };
+      `], {type: 'application/javascript'})));
+      
+      worker.onmessage = function(e) {
+        worker.terminate();
+        if (e.data.success) {
+          resolve(e.data.data);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      };
+      
+      worker.onerror = function(e) {
+        worker.terminate();
+        reject(new Error('Worker error: ' + e.message));
+      };
+      
+      worker.postMessage(compressedData, [compressedData]);
+    });
+  } catch (error) {
+    console.error('解压失败:', error);
+    throw error;
+  }
 }
 
-// 后续：支持config文件下载、进度回调、错误处理等 
+/**
+ * 计算SHA256哈希
+ * @param {string} data 要计算哈希的字符串
+ * @returns {Promise<string>} 哈希结果
+ */
+async function sha256Hash(data) {
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 打包为tar文件（使用tar-js库实现Docker镜像标准格式）
+ * @param {Array<{layerData: ArrayBuffer, layerId: string, digest: string}>} layers 所有layer的解压后数据及ID
+ * @param {Object} manifest 镜像manifest
+ * @param {string} imageName 镜像名
+ * @param {string} tag 镜像标签
+ * @returns {Promise<Blob>} tar文件的blob对象
+ */
+async function packToTar(layers, manifest, imageName, tag) {
+  // 使用tar-js库创建tar文件
+  const tar = new tarball.TarWriter();
+
+  // 验证参数
+  if (!manifest) {
+    throw new Error('Manifest is required for packing tar file');
+  }
+  if (!manifest.config || !manifest.config.digest) {
+    throw new Error('Manifest config is missing or invalid');
+  }
+
+  // 获取镜像配置信息
+  const configDigest = manifest.config.digest;
+  const configBlob = layers.find(layer => layer.digest === configDigest);
+  let config;
+  
+  if (configBlob) {
+    // 解析配置JSON
+    const decoder = new TextDecoder('utf-8');
+    const configText = decoder.decode(configBlob.layerData);
+    config = JSON.parse(configText);
+  } else {
+    throw new Error('找不到镜像配置信息');
+  }
+  
+  // 移除配置层，只保留实际数据层
+  const dataLayers = layers.filter(layer => layer.digest !== configDigest);
+  
+  // 1. 为每一层创建目录和文件
+  for (let i = 0; i < dataLayers.length; i++) {
+    const layer = dataLayers[i];
+    const layerId = layer.layerId;
+    
+    // 创建VERSION文件
+    tar.addTextFile(`${layerId}/VERSION`, '1.0');
+    
+    // 添加layer.tar文件（已解压的layer数据）
+    tar.addFile(`${layerId}/layer.tar`, new Uint8Array(layer.layerData));
+    
+    // 创建json文件
+    const layerJson = {
+      id: layerId,
+      created: config.created,
+      container_config: config.container_config || { Hostname: '', Cmd: null, Image: '' }
+    };
+    
+    // 最后一层包含完整配置信息
+    if (i === dataLayers.length - 1) {
+      layerJson.config = config.config || {};
+      layerJson.architecture = config.architecture || 'amd64';
+      layerJson.os = config.os || 'linux';
+      layerJson.history = config.history || [];
+    }
+    
+    tar.addTextFile(`${layerId}/json`, JSON.stringify(layerJson));
+  }
+  
+  // 2. 创建manifest.json文件
+  const manifestJson = [
+    {
+      Config: `${dataLayers[dataLayers.length - 1].layerId}.json`,
+      RepoTags: [`${imageName}:${tag}`],
+      Layers: dataLayers.map(layer => `${layer.layerId}/layer.tar`)
+    }
+  ];
+  tar.addTextFile('manifest.json', JSON.stringify(manifestJson));
+  
+  // 3. 创建repositories文件
+  const repositories = {};
+  const repoName = imageName.includes('/') ? imageName : `library/${imageName}`;
+  repositories[repoName] = {};
+  repositories[repoName][tag] = dataLayers[dataLayers.length - 1].layerId;
+  tar.addTextFile('repositories', JSON.stringify(repositories));
+  
+  // 4. 添加最后一层的完整JSON配置
+  const lastLayerId = dataLayers[dataLayers.length - 1].layerId;
+  tar.addTextFile(`${lastLayerId}.json`, JSON.stringify(config));
+  
+  // 生成最终的tar文件
+  const tarData = await tar.write();
+  return new Blob([tarData], { type: 'application/x-tar' });
+}
+
+/**
+ * 简化版的tar-js库实现
+ * 实际项目中应该使用完整的tar-js库
+ */
+const tarball = {
+  TarWriter: class {
+    constructor() {
+      this.files = [];
+    }
+    
+    addTextFile(filename, content) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(content);
+      this.addFile(filename, data);
+    }
+    
+    addFile(filename, data) {
+      this.files.push({
+        filename,
+        data,
+        mode: 0o644,
+        mtime: Math.floor(Date.now() / 1000),
+        uid: 0,
+        gid: 0
+      });
+    }
+    
+    async write() {
+      // 计算所有文件的总大小
+      let totalSize = 0;
+      for (const file of this.files) {
+        // 每个文件头512字节 + 文件内容（向上取整到512的倍数）
+        totalSize += 512 + (Math.ceil(file.data.length / 512) * 512);
+      }
+      // 添加结束标记（两个全零的512字节块）
+      totalSize += 1024;
+      
+      const buffer = new Uint8Array(totalSize);
+      let offset = 0;
+      
+      for (const file of this.files) {
+        // 写入文件头
+        offset = this._writeHeader(buffer, offset, file);
+        
+        // 写入文件内容
+        buffer.set(file.data, offset);
+        offset += file.data.length;
+        
+        // 填充到512字节的倍数
+        const paddingLength = 512 - (file.data.length % 512);
+        if (paddingLength < 512) {
+          offset += paddingLength; // 跳过填充的零字节
+        }
+      }
+      
+      // 写入结束标记（两个全零的512字节块）
+      // 由于buffer初始化为0，不需要额外操作
+      
+      return buffer;
+    }
+    
+    _writeHeader(buffer, offset, file) {
+      const encoder = new TextEncoder();
+      const header = new Uint8Array(512); // tar头部固定512字节
+      
+      // 文件名，最多100字节
+      const filenameBytes = encoder.encode(file.filename);
+      header.set(filenameBytes.slice(0, 100), 0);
+      
+      // 文件模式，8进制字符串，8字节
+      const modeStr = file.mode.toString(8).padStart(7, '0') + ' ';
+      header.set(encoder.encode(modeStr), 100);
+      
+      // UID，8进制字符串，8字节
+      const uidStr = file.uid.toString(8).padStart(7, '0') + ' ';
+      header.set(encoder.encode(uidStr), 108);
+      
+      // GID，8进制字符串，8字节
+      const gidStr = file.gid.toString(8).padStart(7, '0') + ' ';
+      header.set(encoder.encode(gidStr), 116);
+      
+      // 文件大小，8进制字符串，12字节
+      const sizeStr = file.data.length.toString(8).padStart(11, '0') + ' ';
+      header.set(encoder.encode(sizeStr), 124);
+      
+      // 修改时间，8进制字符串，12字节
+      const mtimeStr = file.mtime.toString(8).padStart(11, '0') + ' ';
+      header.set(encoder.encode(mtimeStr), 136);
+      
+      // 校验和占位，8字节
+      header.set(encoder.encode('        '), 148);
+      
+      // 文件类型，1字节，'0'表示普通文件
+      header.set(encoder.encode('0'), 156);
+      
+      // 计算校验和
+      let checksum = 0;
+      for (let i = 0; i < 512; i++) {
+        checksum += header[i];
+      }
+      
+      // 写入校验和，8进制字符串，6字节+空格+\0
+      const checksumStr = checksum.toString(8).padStart(6, '0') + '\u0000 ';
+      header.set(encoder.encode(checksumStr), 148);
+      
+      // 将头部复制到主缓冲区
+      buffer.set(header, offset);
+      return offset + 512;
+    }
+  }
+};
+
+// 后续：支持config文件下载、进度回调、错误处理等

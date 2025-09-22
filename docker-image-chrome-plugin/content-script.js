@@ -2,7 +2,7 @@
 // 监听页面加载，识别DockerHub镜像tag列表页面，并在每个架构旁插入下载按钮（SVG图标，紧贴文本一行显示）
 
 // 通过中转服务器代理 fetch，解决 CORS 问题
-import { PROXY_BASE } from './config.js';
+// PROXY_BASE 从 config.js 中获取，该文件在 manifest.json 中已配置为先于 content-script.js 加载
 /**
  * @param {string} url 原始目标URL
  * @param {object} options fetch参数
@@ -225,36 +225,85 @@ async function downloadSingleLayer(image, layer, token) {
 
   // 等待页面主要内容加载，检测tag块出现
   function waitForTagTable(callback) {
+    let attempts = 0;
     const interval = setInterval(() => {
+      attempts++;
       const tagBlocks = document.querySelectorAll('div[data-testid^="repotagsImageList-"]');
-      if (tagBlocks.length > 0) {
+      console.log(`[Docker Download Plugin] Attempt ${attempts}: Found ${tagBlocks.length} tag blocks`);
+
+      // 如果找到tag块或超过20次尝试（10秒）
+      if (tagBlocks.length > 0 || attempts > 20) {
         clearInterval(interval);
-        callback();
+        if (tagBlocks.length > 0) {
+          console.log('[Docker Download Plugin] Tag blocks found, injecting buttons');
+          callback();
+        } else {
+          console.log('[Docker Download Plugin] No tag blocks found after 10 seconds, trying alternative selectors');
+          // 尝试其他可能的选择器
+          const altSelectors = [
+            'table tbody tr',
+            '[data-testid*="tag"]',
+            '.tag-item',
+            '.repository-tag'
+          ];
+
+          for (const selector of altSelectors) {
+            const elements = document.querySelectorAll(selector);
+            console.log(`[Docker Download Plugin] Trying selector "${selector}": Found ${elements.length} elements`);
+            if (elements.length > 0) {
+              callback();
+              break;
+            }
+          }
+        }
       }
     }, 500);
   }
 
   // 遍历所有tag块，为每个架构行插入下载按钮，按钮携带正确tag
   function injectDownloadButtons() {
+    console.log('[Docker Download Plugin] Starting button injection');
     injectStyle();
-    document.querySelectorAll('div[data-testid^="repotagsImageList-"]').forEach(tagBlock => {
-      // 获取tag名（在上方同级的a[data-testid="navToImage"]内）
+    // 支持新版和旧版DockerHub页面结构
+    const tagBlocks = document.querySelectorAll('div[data-testid^="repotagsImageList-"], div.tag-block');
+    console.log('[Docker Download Plugin] Found tag blocks:', tagBlocks.length);
+
+    tagBlocks.forEach((tagBlock, index) => {
+      console.log(`[Docker Download Plugin] Processing tag block ${index + 1}:`, tagBlock);
+      // 获取tag名（在上方同级的a[data-testid="navToImage"]内或其他位置）
       let tag = '';
-      const tagNav = tagBlock.parentElement.querySelector('a[data-testid="navToImage"]');
+      const tagNav = tagBlock.parentElement.querySelector('a[data-testid="navToImage"], .tag-name');
       if (tagNav) tag = tagNav.textContent.trim();
-      if (!tag) tag = 'latest';
+      if (!tag) {
+        // 尝试从URL中获取tag
+        const tagMatch = location.pathname.match(/\/tags\/([^/]+)/);
+        tag = tagMatch ? tagMatch[1] : 'latest';
+      }
+      
       // 遍历该tag块下所有架构行
-      tagBlock.querySelectorAll('tr').forEach(row => {
-        const archCell = row.querySelector('td.osArchItem');
+      const rows = tagBlock.querySelectorAll('tr, .architecture-row');
+      rows.forEach(row => {
+        const archCell = row.querySelector('td.osArchItem, .arch-cell');
         if (!archCell) return;
         if (archCell.querySelector('.docker-download-btn')) return;
-        const arch = archCell.textContent.trim().split('/').pop();
-        const match = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/);
+        
+        // 提取架构信息，支持多种格式
+        let archText = archCell.textContent.trim();
+        let arch = archText.includes('/') ? archText.split('/').pop() : archText;
+        // 标准化架构名称
+        if (arch.includes('amd64') || arch.includes('x86_64')) arch = 'amd64';
+        if (arch.includes('arm64') || arch.includes('aarch64')) arch = 'arm64';
+        
+        // 从URL获取镜像名称
+        const match = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/) || 
+                      location.pathname.match(/\/repository\/([^/]+)\/([^/]+)/);
         const image = match ? `${match[1]}/${match[2]}` : '';
+        
         const btn = document.createElement('button');
         btn.className = 'docker-download-btn';
         btn.innerHTML = downloadSvg;
         btn.title = `下载该架构镜像（${tag}）`;
+        
         // 在按钮点击事件里，直接发起后台下载请求
         btn.onclick = function(e) {
           e.stopPropagation();
@@ -263,15 +312,18 @@ async function downloadSingleLayer(image, layer, token) {
             btn.disabled = true;
             btn.querySelector('path').setAttribute('fill', '#aaa');
             btn.title = '已提交后台下载';
+            showNotification(`开始下载 ${image}:${tag} (${arch})，请在插件弹窗中查看进度`, 'success');
             setTimeout(() => {
               btn.disabled = false;
               btn.title = `下载该架构镜像（${tag}）`;
               btn.querySelector('path').setAttribute('fill', '#333');
             }, 2000);
           } catch (err) {
-            alert('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err));
+            showNotification('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err), 'error');
           }
         };
+        
+        // 插入按钮到合适位置
         const p = archCell.querySelector('p');
         if (p) {
           p.appendChild(btn);
@@ -281,6 +333,10 @@ async function downloadSingleLayer(image, layer, token) {
       });
     });
   }
+
+  // 调试信息
+  console.log('[Docker Download Plugin] Content script loaded on:', location.href);
+  console.log('[Docker Download Plugin] Pathname:', location.pathname);
 
   // 入口
   waitForTagTable(injectDownloadButtons);
@@ -293,4 +349,82 @@ async function downloadSingleLayer(image, layer, token) {
       waitForTagTable(injectDownloadButtons);
     }
   }, 1000);
-})(); 
+  
+  // 监听来自background的下载任务状态更新
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'download-status-update') {
+      showNotification(message.message, message.status === 'success' ? 'success' : 'error');
+    }
+
+    // 处理文件下载请求（备用方案）
+    if (message.type === 'download-file') {
+      try {
+        const data = new Uint8Array(message.data);
+        const blob = new Blob([data], { type: 'application/x-tar' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = message.filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('Content script file download failed:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+      return true; // 保持消息通道开放
+    }
+  });
+  
+  // 显示通知函数
+  function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.style.position = 'fixed';
+    notification.style.bottom = '20px';
+    notification.style.right = '20px';
+    
+    // 根据类型设置颜色
+    switch (type) {
+      case 'success':
+        notification.style.backgroundColor = '#4caf50';
+        break;
+      case 'error':
+        notification.style.backgroundColor = '#f44336';
+        break;
+      case 'warning':
+        notification.style.backgroundColor = '#ff9800';
+        break;
+      default:
+        notification.style.backgroundColor = '#2196f3';
+    }
+    
+    notification.style.color = 'white';
+    notification.style.padding = '12px 20px';
+    notification.style.borderRadius = '4px';
+    notification.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+    notification.style.zIndex = '10000';
+    notification.style.opacity = '0';
+    notification.style.transition = 'opacity 0.3s';
+    notification.innerText = message;
+    
+    document.body.appendChild(notification);
+    
+    // 显示通知
+    setTimeout(() => {
+      notification.style.opacity = '1';
+    }, 10);
+    
+    // 3秒后隐藏
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 300);
+    }, 3000);
+  }
+})();

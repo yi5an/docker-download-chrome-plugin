@@ -1,73 +1,196 @@
-import { PROXY_BASE } from '../config.js';
-
-function renderTasks(tasks, history) {
-  const list = document.getElementById('task-list');
-  let html = '';
-  if (tasks && tasks.length > 0) {
-    html += '<h3>进行中任务</h3>';
-    html += tasks.map(task => renderTask(task, false)).join('');
+document.addEventListener('DOMContentLoaded', function() {
+  // 获取任务容器元素
+  const activeTasksContainer = document.getElementById('active-tasks-container');
+  const historyTasksContainer = document.getElementById('history-tasks-container');
+  
+  // 初始加载任务
+  loadTasks();
+  
+  // 每秒更新一次任务状态
+  setInterval(loadTasks, 1000);
+  
+  // 加载任务函数
+  function loadTasks() {
+    chrome.runtime.sendMessage({type: 'get-tasks'}, function(response) {
+      if (!response) return;
+      
+      // 渲染活动任务
+      renderTasks(activeTasksContainer, response.tasks || [], 'active');
+      
+      // 渲染历史任务
+      renderTasks(historyTasksContainer, response.history || [], 'history');
+    });
   }
-  if (history && history.length > 0) {
-    html += '<h3>历史任务</h3>';
-    html += history.map(task => renderTask(task, true)).join('');
+  
+  // 渲染任务列表
+  function renderTasks(container, tasks, type) {
+    // 清空容器
+    container.innerHTML = '';
+    
+    // 如果没有任务，显示空状态
+    if (tasks.length === 0) {
+      container.innerHTML = `<div class="empty-state">
+        <p>${type === 'active' ? '没有正在进行的下载任务' : '没有历史下载记录'}</p>
+      </div>`;
+      return;
+    }
+    
+    // 遍历任务并渲染
+    tasks.forEach(task => {
+      // 创建任务元素
+      const taskElement = document.createElement('div');
+      taskElement.className = 'task-item';
+      
+      // 计算进度百分比
+      const progress = task.total > 0 ? Math.round((task.finished / task.total) * 100) : 0;
+      
+      // 格式化时间
+      let timeInfo = '';
+      if (task.startTime) {
+        const startTime = new Date(task.startTime);
+        const formattedTime = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
+        timeInfo = `开始时间: ${formattedTime}`;
+      }
+      
+      // 获取任务状态文本和样式
+      const statusInfo = getStatusInfo(task, type);
+      
+      // 构建任务HTML
+      taskElement.innerHTML = `
+        <div class="task-header">
+          <h3 class="task-title">${task.image}:${task.tag} <small>[${task.arch}]</small></h3>
+          <span class="task-status ${statusInfo.statusClass}">${statusInfo.statusText}</span>
+        </div>
+        <div class="task-info">
+          ${timeInfo} | 总层数: ${task.total || 0} | 已完成: ${task.finished || 0}
+        </div>
+        <div class="progress-bar">
+          <div class="progress-inner" style="width: ${progress}%"></div>
+        </div>
+        ${renderLayerInfo(task)}
+        ${task.errorMessage ? `<div class="error-message">${task.errorMessage}</div>` : ''}
+        ${renderTaskActions(task, type)}
+      `;
+      
+      // 添加到容器
+      container.appendChild(taskElement);
+    });
   }
-  if (!html) html = '<div style="color:#888;">暂无下载任务</div>';
-  list.innerHTML = html;
-}
-
-function renderTask(task, isHistory) {
-  const percent = task.total ? Math.round((task.finished / task.total) * 100) : 0;
-  return `
-    <div class="task">
-      <div class="task-title">${task.image}:${task.tag} <span style="font-size:12px;color:#888;">[${task.arch}]</span></div>
-      <div class="task-meta">
-        总层数: ${task.total}，
-        已完成: <span class="status-done">${task.finished}</span>，
-        下载中: <span class="status-downloading">${task.running}</span>，
-        等待: <span class="status-pending">${task.pending}</span>
-      </div>
-      <div class="progress-bar"><div class="progress-bar-inner" style="width:${percent}%;"></div></div>
+  
+  // 获取任务状态信息
+  function getStatusInfo(task, type) {
+    let statusText = '';
+    let statusClass = '';
+    
+    if (type === 'active') {
+      if (task.status === 'downloading') {
+        statusText = '下载中';
+        statusClass = 'status-downloading';
+      } else if (task.status === 'packing') {
+        statusText = '打包中';
+        statusClass = 'status-downloading';
+      } else if (task.status === 'completed' || task.status === 'done') {
+        statusText = '已完成';
+        statusClass = 'status-completed';
+      } else if (task.status === 'failed') {
+        statusText = '失败';
+        statusClass = 'status-failed';
+      }
+    } else {
+      if (task.status === 'completed' || task.status === 'done') {
+        statusText = '已完成';
+        statusClass = 'status-completed';
+      } else if (task.status === 'failed') {
+        statusText = '失败';
+        statusClass = 'status-failed';
+      }
+    }
+    
+    return { statusText, statusClass };
+  }
+  
+  // 渲染层信息
+  function renderLayerInfo(task) {
+    if (!task.layers || task.layers.length === 0) {
+      return '';
+    }
+    
+    return `
       <div class="layer-list">
-        ${task.layers.map((layer, i) => `
+        ${task.layers.map(layer => `
           <div class="layer-item">
-            <span style="font-family:monospace;">${layer.digest.slice(0, 12)}</span>
-            <span class="layer-status status-${layer.status}">${layer.status}</span>
+            <span class="layer-digest">${layer.digest.substring(0, 16)}...</span>
+            <span class="layer-status">${getLayerStatusText(layer.status)}</span>
           </div>
         `).join('')}
       </div>
-      <div style="margin-top:6px;">
-        ${isHistory
-          ? `<button class="retry-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">重新下载</button>
-             <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">删除</button>`
-          : `<button class="retry-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}" disabled>下载中</button>`
+    `;
+  }
+  
+  // 获取层状态文本
+  function getLayerStatusText(status) {
+    switch (status) {
+      case 'pending': return '等待中';
+      case 'downloading': return '下载中';
+      case 'done': return '已完成';
+      case 'failed': return '失败';
+      default: return status;
+    }
+  }
+  
+  // 渲染任务操作按钮
+  function renderTaskActions(task, type) {
+    if (type === 'active') {
+      if (task.status === 'completed' || task.status === 'done') {
+        return '<div class="task-actions">下载已完成，文件已保存</div>';
+      }
+      return '';
+    } else {
+      if (task.status === 'completed' || task.status === 'done') {
+        return `
+          <div class="task-actions">
+            <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">删除记录</button>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="task-actions">
+            <button class="retry-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">重试</button>
+            <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">删除记录</button>
+          </div>
+        `;
+      }
+    }
+  }
+  
+  // 为历史任务的重试和删除按钮添加事件监听器
+  document.addEventListener('click', function(event) {
+    // 重试按钮
+    if (event.target.classList.contains('retry-btn')) {
+      const { image, tag, arch } = event.target.dataset;
+      chrome.runtime.sendMessage(
+        { type: 'retry-download', image, tag, arch },
+        function(response) {
+          if (response && response.ok) {
+            // 重新加载任务列表
+            loadTasks();
+          }
         }
-      </div>
-    </div>
-  `;
-}
-
-// popup 打开时主动获取
-chrome.storage.local.get(['dockerDownloadTasks', 'dockerDownloadHistory'], data => {
-  renderTasks(data.dockerDownloadTasks || [], data.dockerDownloadHistory || []);
+      );
+    }
+    
+    // 删除按钮
+    if (event.target.classList.contains('delete-btn')) {
+      const { image, tag, arch } = event.target.dataset;
+      chrome.runtime.sendMessage(
+        { type: 'delete-history', image, tag, arch },
+        function(response) {
+          if (response && response.ok) {
+            // 重新加载任务列表
+            loadTasks();
+          }
+        }
+      );
+    }
+  });
 });
-
-// 实时监听 storage 变化
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.dockerDownloadTasks || changes.dockerDownloadHistory)) {
-    chrome.storage.local.get(['dockerDownloadTasks', 'dockerDownloadHistory'], data => {
-      renderTasks(data.dockerDownloadTasks || [], data.dockerDownloadHistory || []);
-    });
-  }
-});
-
-// 事件委托：重试/删除
-document.addEventListener('click', e => {
-  if (e.target.classList.contains('retry-btn') && !e.target.disabled) {
-    const {image, tag, arch} = e.target.dataset;
-    chrome.runtime.sendMessage({type: 'retry-download', image, tag, arch});
-  }
-  if (e.target.classList.contains('delete-btn')) {
-    const {image, tag, arch} = e.target.dataset;
-    chrome.runtime.sendMessage({type: 'delete-history', image, tag, arch});
-  }
-}); 

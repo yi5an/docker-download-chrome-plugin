@@ -1,28 +1,141 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <title>Docker 镜像下载进度</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker镜像下载器</title>
   <style>
-    body { font-family: sans-serif; min-width: 350px; margin: 0; padding: 10px; background: #f7f7f7; }
-    .task { background: #fff; border-radius: 6px; margin-bottom: 16px; box-shadow: 0 1px 4px #0001; padding: 12px; }
-    .task-title { font-weight: bold; margin-bottom: 4px; }
-    .task-meta { color: #888; font-size: 13px; margin-bottom: 6px; }
-    .progress-bar { background: #eee; border-radius: 4px; height: 8px; margin: 6px 0; }
-    .progress-bar-inner { background: #1890ff; height: 100%; border-radius: 4px; transition: width 0.3s; }
-    .layer-list { font-size: 12px; margin-top: 8px; }
-    .layer-item { display: flex; align-items: center; margin-bottom: 2px; }
-    .layer-status { width: 60px; text-align: right; margin-left: 8px; }
-    .status-downloading { color: #1890ff; }
-    .status-done { color: #52c41a; }
-    .status-failed { color: #ff4d4f; }
-    .status-pending { color: #aaa; }
-    h3 { margin: 12px 0 4px 0; font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      margin: 0;
+      padding: 16px;
+      width: 380px;
+      max-height: 600px;
+      overflow-y: auto;
+      color: #333;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+      color: #0066cc;
+    }
+    .task-list {
+      margin-bottom: 16px;
+    }
+    .task-item {
+      background: #f9f9f9;
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .task-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .task-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin: 0;
+    }
+    .task-status {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      color: white;
+    }
+    .status-downloading {
+      background-color: #1890ff;
+    }
+    .status-completed {
+      background-color: #52c41a;
+    }
+    .status-failed {
+      background-color: #f5222d;
+    }
+    .task-info {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .progress-bar {
+      height: 6px;
+      background-color: #e9e9e9;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-inner {
+      height: 100%;
+      background-color: #1890ff;
+      transition: width 0.3s ease;
+    }
+    .layer-list {
+      margin-top: 8px;
+      max-height: 120px;
+      overflow-y: auto;
+      border-top: 1px solid #eee;
+      padding-top: 8px;
+    }
+    .layer-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .layer-digest {
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+    .layer-status {
+      flex-shrink: 0;
+    }
+    .error-message {
+      margin-top: 8px;
+      padding: 8px;
+      background-color: #fff2f0;
+      border: 1px solid #ffccc7;
+      border-radius: 4px;
+      color: #f5222d;
+      font-size: 12px;
+      word-break: break-word;
+    }
+    .no-tasks {
+      text-align: center;
+      color: #999;
+      padding: 20px 0;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 30px 0;
+      color: #999;
+    }
+    .empty-state p {
+      margin: 10px 0 0;
+    }
   </style>
 </head>
 <body>
-  <h2 style="margin-top:0;">下载进度</h2>
-  <div id="task-list"></div>
+  <h1>Docker镜像下载器</h1>
+  
+  <div id="active-tasks" class="task-list">
+    <h2>活动任务</h2>
+    <div id="active-tasks-container"></div>
+  </div>
+  
+  <div id="history-tasks" class="task-list">
+    <h2>历史记录</h2>
+    <div id="history-tasks-container"></div>
+  </div>
+
+  <script src="../config.js"></script>
   <script src="popup.js"></script>
 </body>
-</html> 
+</html>
