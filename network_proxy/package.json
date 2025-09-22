@@ -7,6 +7,7 @@
     "start": "node service.js",
     "dev": "nodemon service.js",
     "test": "node test-proxy.js",
+    "demo": "node generate-demo-data.js",
     "install-deps": "npm install"
   },
   "keywords": ["docker", "proxy", "cache", "download"],

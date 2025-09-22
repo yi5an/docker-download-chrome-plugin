@@ -68,7 +68,9 @@ class StatsManager {
   }
 
   recordDownload(image, tag, arch, size = 0) {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const hour = now.getHours();
     const imageKey = `${image}:${tag}:${arch}`;
 
     // 总下载次数
@@ -89,10 +91,26 @@ class StatsManager {
 
     // 每日统计
     if (!this.stats.dailyStats[today]) {
-      this.stats.dailyStats[today] = { downloads: 0, uniqueImages: new Set() };
+      this.stats.dailyStats[today] = {
+        downloads: 0,
+        uniqueImages: new Set(),
+        totalSize: 0,
+        hourlyStats: {}
+      };
     }
     this.stats.dailyStats[today].downloads++;
     this.stats.dailyStats[today].uniqueImages.add(imageKey);
+    this.stats.dailyStats[today].totalSize += size;
+
+    // 小时统计
+    if (!this.stats.dailyStats[today].hourlyStats[hour]) {
+      this.stats.dailyStats[today].hourlyStats[hour] = {
+        downloads: 0,
+        totalSize: 0
+      };
+    }
+    this.stats.dailyStats[today].hourlyStats[hour].downloads++;
+    this.stats.dailyStats[today].hourlyStats[hour].totalSize += size;
 
     this.saveStats();
   }
@@ -290,6 +308,9 @@ const cacheManager = new CacheManager();
 
 app.use(express.json());
 
+// 静态文件服务
+app.use('/static', express.static(path.join(__dirname, 'public')));
+
 // 允许所有跨域
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -436,8 +457,18 @@ app.get('/stats', async (req, res) => {
     const stats = statsManager.getStats();
     const cacheStats = await cacheManager.getCacheStats();
 
+    // 处理Set对象序列化问题
+    const processedDailyStats = {};
+    Object.entries(stats.dailyStats).forEach(([date, data]) => {
+      processedDailyStats[date] = {
+        ...data,
+        uniqueImages: Array.from(data.uniqueImages || [])
+      };
+    });
+
     res.json({
       ...stats,
+      dailyStats: processedDailyStats,
       cacheStats: {
         ...stats.cacheStats,
         ...cacheStats
@@ -445,6 +476,73 @@ app.get('/stats', async (req, res) => {
     });
   } catch (err) {
     console.error('[Stats] 获取统计失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 每日统计API
+app.get('/api/daily-stats', async (req, res) => {
+  try {
+    const stats = statsManager.getStats();
+    const days = parseInt(req.query.days) || 7;
+
+    const dailyData = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+
+      const dayStats = stats.dailyStats[dateStr] || {
+        downloads: 0,
+        totalSize: 0,
+        uniqueImages: [],
+        hourlyStats: {}
+      };
+
+      dailyData.push({
+        date: dateStr,
+        downloads: dayStats.downloads,
+        totalSize: dayStats.totalSize,
+        uniqueImages: Array.from(dayStats.uniqueImages || []).length,
+        hourlyStats: dayStats.hourlyStats || {}
+      });
+    }
+
+    res.json(dailyData);
+  } catch (err) {
+    console.error('[API] 获取每日统计失败:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 小时统计API
+app.get('/api/hourly-stats', async (req, res) => {
+  try {
+    const stats = statsManager.getStats();
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+
+    const dayStats = stats.dailyStats[date];
+    if (!dayStats) {
+      return res.json([]);
+    }
+
+    const hourlyData = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const hourStats = dayStats.hourlyStats[hour] || {
+        downloads: 0,
+        totalSize: 0
+      };
+
+      hourlyData.push({
+        hour,
+        downloads: hourStats.downloads,
+        totalSize: hourStats.totalSize
+      });
+    }
+
+    res.json(hourlyData);
+  } catch (err) {
+    console.error('[API] 获取小时统计失败:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -482,6 +580,15 @@ app.get('/health', (req, res) => {
       stats: true
     }
   });
+});
+
+// 前端监控页面
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // 启动服务器

@@ -39,3 +39,6 @@ Thumbs.db
 
 # Statistics file (will be created at runtime)
 download-stats.json
+
+# Public assets are included in git
+# public/
