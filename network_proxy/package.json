@@ -1,0 +1,24 @@
+{
+  "name": "docker-proxy-server",
+  "version": "1.1.0",
+  "description": "Docker镜像下载代理服务器，支持缓存和统计功能",
+  "main": "service.js",
+  "scripts": {
+    "start": "node service.js",
+    "dev": "nodemon service.js",
+    "test": "node test-proxy.js",
+    "install-deps": "npm install"
+  },
+  "keywords": ["docker", "proxy", "cache", "download"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "https-proxy-agent": "^7.0.6",
+    "node-fetch": "^2.7.0",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
