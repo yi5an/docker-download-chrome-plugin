@@ -10,7 +10,7 @@ const proxyAgent = new HttpsProxyAgent('http://127.0.0.1:7890'); // 你的本地
 
 // 配置项
 const CONFIG = {
-  PORT: 7000,
+  PORT: 7001,
   CACHE_DIR: path.join(__dirname, 'cache'),
   STATS_FILE: path.join(__dirname, 'download-stats.json'),
   CACHE_ENABLED: true,
@@ -308,9 +308,6 @@ const cacheManager = new CacheManager();
 
 app.use(express.json());
 
-// 静态文件服务
-app.use('/static', express.static(path.join(__dirname, 'public')));
-
 // 允许所有跨域
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -323,6 +320,10 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// 静态文件服务 - 调整为更明确的配置
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/static', express.static(path.join(__dirname, 'public')));
 
 // 解析请求信息
 function parseDockerRequest(url) {
