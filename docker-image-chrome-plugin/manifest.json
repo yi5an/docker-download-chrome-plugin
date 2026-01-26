@@ -13,7 +13,11 @@
   "host_permissions": [
     "https://hub.docker.com/*",
     "https://registry-1.docker.io/*",
-    "http://123.57.165.38:7000/*"
+    "http://123.57.165.38:7000/*",
+    "http://ip-api.com/*",
+    "http://localhost:3000/*",
+    "https://auth.docker.io/*",
+    "https://production.cloudflare.docker.com/*"
   ],
   "background": {
     "service_worker": "background-wrapper.js"
@@ -27,7 +31,10 @@
         "https://hub.docker.com/_/*/tags*",
         "https://hub.docker.com/*/tags*"
       ],
-      "js": ["config.js", "content-script.js"],
+      "js": [
+        "config.js",
+        "content-script.js"
+      ],
       "run_at": "document_end"
     }
   ],

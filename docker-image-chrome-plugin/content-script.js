@@ -1,21 +1,19 @@
 // content-script.js
-// 监听页面加载，识别DockerHub镜像tag列表页面，并在每个架构旁插入下载按钮（SVG图标，紧贴文本一行显示）
+// 监听页面加载，识别DockerHub镜像tag列表页面，并在每个架构旁插入下载按钮
 
-// 通过中转服务器代理 fetch，解决 CORS 问题
-// PROXY_BASE 从 config.js 中获取，该文件在 manifest.json 中已配置为先于 content-script.js 加载
 /**
+ * 通过 background 脚本进行请求（由 background 决定是否走代理）
  * @param {string} url 原始目标URL
  * @param {object} options fetch参数
  * @param {string} responseType 'text' | 'arrayBuffer'
  * @returns {Promise<{ok, status, contentType, body}>}
  */
 function proxyFetch(url, options = {}, responseType = 'text') {
-  const proxyUrl = PROXY_BASE + encodeURIComponent(url);
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
       {
         type: 'proxy-fetch',
-        url: proxyUrl,
+        url: url, // 传递原始 URL
         options,
         responseType
       },
@@ -126,7 +124,7 @@ function packToTar(layersData) {
   // 这里只做伪实现，后续用tar-js等库实现真正打包
   // return new Blob([...layersData], {type: 'application/x-tar'});
   // 占位：实际应将各layer和config等文件打包为标准docker镜像tar结构
-  return new Blob([new Uint8Array([0x54,0x41,0x52])], {type: 'application/x-tar'}); // 仅占位
+  return new Blob([new Uint8Array([0x54, 0x41, 0x52])], { type: 'application/x-tar' }); // 仅占位
 }
 
 // 后续：支持config文件下载、进度回调、错误处理等
@@ -137,16 +135,16 @@ window.dockerDownloadTasks = window.dockerDownloadTasks || [];
 // 供popup获取任务
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'docker-download-tasks-get') {
-    sendResponse({tasks: window.dockerDownloadTasks});
+    sendResponse({ tasks: window.dockerDownloadTasks });
   }
 });
 
 function syncTasksToStorage() {
-  chrome.storage.local.set({dockerDownloadTasks: window.dockerDownloadTasks});
+  chrome.storage.local.set({ dockerDownloadTasks: window.dockerDownloadTasks });
 }
 
 // 启动下载任务
-function startDownloadTask({image, tag, arch, layers}) {
+function startDownloadTask({ image, tag, arch, layers }) {
   const task = {
     id: Date.now() + Math.random(),
     image, tag, arch,
@@ -161,7 +159,7 @@ function startDownloadTask({image, tag, arch, layers}) {
     }))
   };
   window.dockerDownloadTasks.push(task);
-  chrome.runtime.sendMessage({type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks});
+  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks });
   syncTasksToStorage();
   return task;
 }
@@ -171,7 +169,7 @@ function updateLayerStatus(task, layerIndex, status) {
   task.finished = task.layers.filter(l => l.status === 'done').length;
   task.running = task.layers.filter(l => l.status === 'downloading').length;
   task.pending = task.layers.filter(l => l.status === 'pending').length;
-  chrome.runtime.sendMessage({type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks});
+  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks });
   syncTasksToStorage();
 }
 
@@ -187,7 +185,7 @@ async function downloadSingleLayer(image, layer, token) {
   return new Uint8Array(resp.body).buffer;
 }
 
-(function() {
+(function () {
   // SVG图标字符串
   const downloadSvg = `
     <svg t="1753283428326" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1493" width="20" height="20" style="vertical-align:middle;">
@@ -279,36 +277,64 @@ async function downloadSingleLayer(image, layer, token) {
         const tagMatch = location.pathname.match(/\/tags\/([^/]+)/);
         tag = tagMatch ? tagMatch[1] : 'latest';
       }
-      
+
       // 遍历该tag块下所有架构行
       const rows = tagBlock.querySelectorAll('tr, .architecture-row');
       rows.forEach(row => {
         const archCell = row.querySelector('td.osArchItem, .arch-cell');
         if (!archCell) return;
         if (archCell.querySelector('.docker-download-btn')) return;
-        
+
         // 提取架构信息，支持多种格式
         let archText = archCell.textContent.trim();
         let arch = archText.includes('/') ? archText.split('/').pop() : archText;
         // 标准化架构名称
         if (arch.includes('amd64') || arch.includes('x86_64')) arch = 'amd64';
         if (arch.includes('arm64') || arch.includes('aarch64')) arch = 'arm64';
-        
+
         // 从URL获取镜像名称
-        const match = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/) || 
-                      location.pathname.match(/\/repository\/([^/]+)\/([^/]+)/);
-        const image = match ? `${match[1]}/${match[2]}` : '';
-        
+        // 支持: 
+        // 1. /_/python (官方镜像 -> library/python)
+        // 2. /r/user/repo (旧版URL)
+        // 3. /repository/docker/user/repo (新版URL?) - 需要确认，通常是 /repository/docker/namespace/image
+        // 这里尝试几个常见的模式
+        let image = '';
+        const officialMatch = location.pathname.match(/^\/_/([^ /]+)/);
+        if (officialMatch) {
+          image = `library/${officialMatch[1]}`;
+        } else {
+          const match = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/) ||
+            location.pathname.match(/\/repository\/[^/]+\/([^/]+)\/([^/]+)/) || // 可能的结构 /repository/docker/u/r ?，或者直接 loose match
+            location.pathname.match(/\/repository\/([^/]+)\/([^/]+)/); // 如果是 direct namespace
+
+          if (match) {
+            image = `${match[1]}/${match[2]}`;
+          } else {
+            // Fallback: 尝试提取最后两个path segments，或者页面标题
+            // 但对于 /_/python 必须转为 library/python， 否则registry API 404
+            // 如果 match 失败，可能不在标准页面
+          }
+        }
+
+        // 再次兜底检查：如果是官方镜像页面，上面的 regex 可能 missed
+        if (!image && location.pathname.includes('/_/')) {
+          const parts = location.pathname.split('/_/');
+          if (parts.length > 1) {
+            const name = parts[1].split('/')[0];
+            if (name) image = `library/${name}`;
+          }
+        }
+
         const btn = document.createElement('button');
         btn.className = 'docker-download-btn';
         btn.innerHTML = downloadSvg;
         btn.title = `下载该架构镜像（${tag}）`;
-        
+
         // 在按钮点击事件里，直接发起后台下载请求
-        btn.onclick = function(e) {
+        btn.onclick = function (e) {
           e.stopPropagation();
           try {
-            chrome.runtime.sendMessage({type: 'start-download', image, tag, arch});
+            chrome.runtime.sendMessage({ type: 'start-download', image, tag, arch });
             btn.disabled = true;
             btn.querySelector('path').setAttribute('fill', '#aaa');
             btn.title = '已提交后台下载';
@@ -322,7 +348,7 @@ async function downloadSingleLayer(image, layer, token) {
             showNotification('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err), 'error');
           }
         };
-        
+
         // 插入按钮到合适位置
         const p = archCell.querySelector('p');
         if (p) {
@@ -349,7 +375,7 @@ async function downloadSingleLayer(image, layer, token) {
       waitForTagTable(injectDownloadButtons);
     }
   }, 1000);
-  
+
   // 监听来自background的下载任务状态更新
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'download-status-update') {
@@ -380,14 +406,14 @@ async function downloadSingleLayer(image, layer, token) {
       return true; // 保持消息通道开放
     }
   });
-  
+
   // 显示通知函数
   function showNotification(message, type = 'info') {
     const notification = document.createElement('div');
     notification.style.position = 'fixed';
     notification.style.bottom = '20px';
     notification.style.right = '20px';
-    
+
     // 根据类型设置颜色
     switch (type) {
       case 'success':
@@ -402,7 +428,7 @@ async function downloadSingleLayer(image, layer, token) {
       default:
         notification.style.backgroundColor = '#2196f3';
     }
-    
+
     notification.style.color = 'white';
     notification.style.padding = '12px 20px';
     notification.style.borderRadius = '4px';
@@ -411,14 +437,14 @@ async function downloadSingleLayer(image, layer, token) {
     notification.style.opacity = '0';
     notification.style.transition = 'opacity 0.3s';
     notification.innerText = message;
-    
+
     document.body.appendChild(notification);
-    
+
     // 显示通知
     setTimeout(() => {
       notification.style.opacity = '1';
     }, 10);
-    
+
     // 3秒后隐藏
     setTimeout(() => {
       notification.style.opacity = '0';
