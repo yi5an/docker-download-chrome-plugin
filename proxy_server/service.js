@@ -44,7 +44,10 @@ app.get('/proxy', async (req, res) => {
         const headers = {};
         if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
         if (req.headers['accept']) headers['accept'] = req.headers['accept'];
-        console.log('[proxy] 发起fetch:', targetUrl, headers);
+
+        const logHeaders = { ...headers };
+        if (logHeaders['authorization']) logHeaders['authorization'] = 'Bearer ******';
+        console.log('[proxy] 发起fetch:', targetUrl, logHeaders);
         const resp = await fetch(targetUrl, { headers, agent: proxyAgent });
         const contentType = resp.headers.get('content-type');
         console.log('[proxy] 响应状态:', resp.status, 'content-type:', contentType);

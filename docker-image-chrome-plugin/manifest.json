@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "description": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。",
   "permissions": [
-    "scripting",
     "activeTab",
     "storage",
     "tabs",
@@ -13,7 +12,8 @@
   "host_permissions": [
     "https://hub.docker.com/*",
     "https://registry-1.docker.io/*",
-    "http://123.57.165.38:7000/*",
+    "http://172.16.28.250:7000/*",
+    "http://172.16.28.250:3000/*",
     "http://ip-api.com/*",
     "http://localhost:3000/*",
     "https://auth.docker.io/*",
