@@ -299,7 +299,7 @@ async function downloadSingleLayer(image, layer, token) {
         // 3. /repository/docker/user/repo (新版URL?) - 需要确认，通常是 /repository/docker/namespace/image
         // 这里尝试几个常见的模式
         let image = '';
-        const officialMatch = location.pathname.match(/^\/_/([^ /]+)/);
+        const officialMatch = location.pathname.match(/^\/_\/([^\/\s]+)/);
         if (officialMatch) {
           image = `library/${officialMatch[1]}`;
         } else {

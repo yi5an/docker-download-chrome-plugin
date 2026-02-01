@@ -50,15 +50,21 @@ async function parseResponse(resp, responseType) {
   return await resp.text();
 }
 
-// 代理fetch通过中转服务器（若在海外则直连）
+// 代理fetch通过中转服务器（Docker Registry 必须走代理以避免 CORS）
 async function proxyFetch(url, options = {}, responseType = 'json') {
-  const useProxy = await checkGeoLocation();
+  // Docker Registry 相关请求必须走代理（避免 Cloudflare R2 的 CORS 问题）
+  const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod/.test(url);
+
+  let useProxy = isDockerRegistry; // Docker Registry 强制代理
+  if (!isDockerRegistry) {
+    useProxy = await checkGeoLocation(); // 其他请求按地理位置判断
+  }
 
   // 定义尝试顺序
   const strategies = useProxy ? ['proxy', 'direct'] : ['direct', 'proxy'];
   const errors = [];
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}`);
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}`);
 
   for (const strategy of strategies) {
     try {

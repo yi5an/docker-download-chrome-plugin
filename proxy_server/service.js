@@ -37,7 +37,8 @@ app.get('/proxy', async (req, res) => {
         return res.status(400).send('Missing url param');
     }
     try {
-        if (!/^https:\/\/(registry-1|auth)\.docker\.io\//.test(targetUrl)) {
+        // 白名单：允许 Docker Registry 及其 CDN（包括 Cloudflare R2）
+        if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(targetUrl)) {
             console.error('[proxy] 非法目标:', targetUrl);
             return res.status(403).send('Forbidden');
         }
