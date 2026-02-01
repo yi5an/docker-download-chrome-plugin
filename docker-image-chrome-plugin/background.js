@@ -29,6 +29,12 @@ async function checkGeoLocation() {
  * 上报下载信息到后端
  */
 async function reportDownload(image, tag, arch) {
+  // 如果 TRACKING_URL 为空，则跳过追踪
+  if (!TRACKING_URL) {
+    console.log(`[Track] Tracking disabled, skipping report for ${image}:${tag} (${arch})`);
+    return;
+  }
+
   try {
     await fetch(TRACKING_URL, {
       method: 'POST',
