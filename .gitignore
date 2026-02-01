@@ -6,6 +6,7 @@ docker-image-chrome-plugin/config.js
 server.log
 debug.log
 tracking.log
+traffic.log
 
 # 临时文件
 nul
