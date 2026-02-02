@@ -2,7 +2,13 @@ const fetch = require('node-fetch');
 const express = require('express');
 const app = express();
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const proxyAgent = new HttpsProxyAgent('http://127.0.0.1:7890'); // 你的本地代理地址
+
+// 代理配置（可通过环境变量控制）
+const USE_PROXY = process.env.USE_PROXY === 'true';
+const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
+
+// 根据环境变量决定是否使用代理
+const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
 
 const fs = require('fs');
 const path = require('path');
@@ -248,8 +254,14 @@ app.get('/proxy', async (req, res) => {
         const logHeaders = { ...headers };
         if (logHeaders['authorization']) logHeaders['authorization'] = 'Bearer ******';
         console.log('[proxy] 发起fetch:', targetUrl, logHeaders);
+        console.log('[proxy] 使用代理:', USE_PROXY ? PROXY_URL : '直连');
 
-        const resp = await fetch(targetUrl, { headers, agent: proxyAgent });
+        const fetchOptions = { headers };
+        if (proxyAgent) {
+            fetchOptions.agent = proxyAgent;
+        }
+
+        const resp = await fetch(targetUrl, fetchOptions);
         const contentType = resp.headers.get('content-type');
         const contentLength = parseInt(resp.headers.get('content-length') || '0');
 
@@ -445,13 +457,21 @@ app.get('/traffic-dashboard', (req, res) => {
 const PORT = 7000;
 app.listen(PORT, () => {
     console.log(`Proxy server running at http://localhost:${PORT}`);
-    console.log(`Features:`);
+    console.log(`\n网络配置:`);
+    console.log(`  - 代理模式: ${USE_PROXY ? '已启用' : '已禁用（直连）'}`);
+    if (USE_PROXY) {
+        console.log(`  - 代理地址: ${PROXY_URL}`);
+    }
+    console.log(`\n功能列表:`);
     console.log(`  - Traffic statistics: /api/traffic-stats`);
     console.log(`  - Cache management: /api/cache-stats, /api/cache-entries, /api/cache-clear`);
     console.log(`  - Tracking: /api/tracking-stats`);
     console.log(`  - Dashboard: /dashboard`);
     console.log(`  - Traffic Dashboard: /traffic-dashboard`);
-    console.log(`\nCache config:`);
+    console.log(`\n缓存配置:`);
     console.log(`  - Max items: ${responseCache.maxSize}`);
     console.log(`  - Max size: ${(responseCache.maxBytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`\n提示: 通过环境变量控制代理`);
+    console.log(`  启用代理: USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 node service.js`);
+    console.log(`  禁用代理: node service.js`);
 });
