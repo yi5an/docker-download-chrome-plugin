@@ -288,9 +288,38 @@ async function downloadSingleLayer(image, layer, token) {
         // 提取架构信息，支持多种格式
         let archText = archCell.textContent.trim();
         let arch = archText.includes('/') ? archText.split('/').pop() : archText;
-        // 标准化架构名称
-        if (arch.includes('amd64') || arch.includes('x86_64')) arch = 'amd64';
-        if (arch.includes('arm64') || arch.includes('aarch64')) arch = 'arm64';
+        const originalArch = arch; // 保存原始架构名称用于显示
+
+        // 标准化架构名称（完整映射表）
+        // AMD64/x86
+        if (arch.includes('amd64') || arch.includes('x86_64') || arch.includes('x86-64')) {
+          arch = 'amd64';
+        }
+        // ARM 64位
+        else if (arch.includes('arm64') || arch.includes('aarch64') || arch.includes('arm/v8')) {
+          arch = 'arm64';
+        }
+        // ARM 32位 (包括 v6, v7)
+        else if (arch.includes('arm') || arch.includes('v7') || arch.includes('arm/v7') ||
+                 arch.includes('armhf') || arch.includes('armel') || arch.includes('v6')) {
+          arch = 'arm';
+        }
+        // 386
+        else if (arch.includes('386') || arch.includes('i386') || arch.includes('x86')) {
+          arch = '386';
+        }
+        // ppc64le
+        else if (arch.includes('ppc64le')) {
+          arch = 'ppc64le';
+        }
+        // s390x
+        else if (arch.includes('s390x')) {
+          arch = 's390x';
+        }
+        // riscv64
+        else if (arch.includes('riscv64')) {
+          arch = 'riscv64';
+        }
 
         // 从URL获取镜像名称
         // 支持: 
@@ -328,7 +357,7 @@ async function downloadSingleLayer(image, layer, token) {
         const btn = document.createElement('button');
         btn.className = 'docker-download-btn';
         btn.innerHTML = downloadSvg;
-        btn.title = `下载该架构镜像（${tag}）`;
+        btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
 
         // 在按钮点击事件里，直接发起后台下载请求
         btn.onclick = function (e) {
@@ -338,10 +367,10 @@ async function downloadSingleLayer(image, layer, token) {
             btn.disabled = true;
             btn.querySelector('path').setAttribute('fill', '#aaa');
             btn.title = '已提交后台下载';
-            showNotification(`开始下载 ${image}:${tag} (${arch})，请在插件弹窗中查看进度`, 'success');
+            showNotification(`开始下载 ${image}:${tag} (${originalArch})，请在插件弹窗中查看进度`, 'success');
             setTimeout(() => {
               btn.disabled = false;
-              btn.title = `下载该架构镜像（${tag}）`;
+              btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
               btn.querySelector('path').setAttribute('fill', '#333');
             }, 2000);
           } catch (err) {

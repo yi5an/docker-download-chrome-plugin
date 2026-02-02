@@ -155,7 +155,64 @@ async function getDockerToken(image) {
   return data.token;
 }
 
+/**
+ * 规范化架构名称到 Docker Registry 标准架构
+ * @param {string} arch 输入的架构名称
+ * @returns {string} 标准化的架构名称
+ */
+function normalizeArchitecture(arch) {
+  // 架构别名映射表
+  const archAliases = {
+    // ARM 32位 变体
+    'v7': 'arm',
+    'arm/v7': 'arm',
+    'arm/v6': 'arm',
+    'armhf': 'arm',
+    'armel': 'arm',
+    'arm-32': 'arm',
+
+    // ARM 64位 变体
+    'aarch64': 'arm64',
+    'arm64/v8': 'arm64',
+    'arm/v8': 'arm64',
+
+    // AMD64/x86 变体
+    'x86_64': 'amd64',
+    'x86-64': 'amd64',
+    'x64': 'amd64',
+
+    // 386 变体
+    'i386': '386',
+    'i686': '386',
+    'x86': '386',
+
+    // 其他架构保持不变
+    'ppc64le': 'ppc64le',
+    's390x': 's390x',
+    'riscv64': 'riscv64'
+  };
+
+  // 如果输入已经是标准架构，直接返回
+  if (['amd64', 'arm64', 'arm', '386', 'ppc64le', 's390x', 'riscv64'].includes(arch)) {
+    return arch;
+  }
+
+  // 查找别名映射
+  return archAliases[arch] || arch;
+}
+
+/**
+ * 获取 DockerHub 镜像的 manifest/config/layers，支持多架构
+ * @param {string} image 镜像名（如 library/ubuntu）
+ * @param {string} tagOrDigest 镜像tag或digest（如 latest）
+ * @param {string} arch 架构（如 amd64、arm64、arm、v7）
+ * @returns {Promise<object>} manifest对象
+ */
 async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
+  // 规范化架构名称（处理 v7 → arm, arm/v7 → arm 等）
+  arch = normalizeArchitecture(arch);
+  console.log(`[fetchManifest] Normalized architecture: ${arch}`);
+
   const token = await getDockerToken(image);
   let url = `https://registry-1.docker.io/v2/${image}/manifests/${tagOrDigest}`;
   let manifest = await proxyFetch(url, {
@@ -166,8 +223,34 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
   }, 'json');
   let tryCount = 0;
   while (!manifest.layers && manifest.manifests && tryCount < 5) {
-    const found = manifest.manifests.find(m => m.platform && m.platform.architecture === arch);
-    if (!found) throw new Error('未找到匹配架构的manifest: ' + arch);
+    // 使用更灵活的匹配逻辑
+    const found = manifest.manifests.find(m => {
+      if (!m.platform) return false;
+
+      // 优先精确匹配 architecture
+      if (m.platform.architecture === arch) return true;
+
+      // 特殊处理：如果请求 arm，也匹配 arm/v7 等
+      if (arch === 'arm' && m.platform.architecture === 'arm') {
+        // 检查 variant 是否兼容（v6, v7 等）
+        const variant = m.platform.variant || '';
+        if (!variant || ['v6', 'v7', 'v5'].includes(variant)) {
+          console.log(`[fetchManifest] Found arm with variant: ${variant}`);
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (!found) {
+      // 列出所有可用的架构，方便调试
+      const availableArchs = manifest.manifests
+        .map(m => m.platform ? `${m.platform.architecture}${m.platform.variant ? '/' + m.platform.variant : ''}` : 'unknown')
+        .join(', ');
+      throw new Error(`未找到匹配架构的manifest: ${arch} (可用架构: ${availableArchs})`);
+    }
+
     url = `https://registry-1.docker.io/v2/${image}/manifests/${found.digest}`;
     manifest = await proxyFetch(url, {
       headers: {
