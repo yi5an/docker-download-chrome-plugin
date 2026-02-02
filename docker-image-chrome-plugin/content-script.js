@@ -221,41 +221,109 @@ async function downloadSingleLayer(image, layer, token) {
     document.head.appendChild(style);
   }
 
-  // 等待页面主要内容加载，检测tag块出现
-  function waitForTagTable(callback) {
-    let attempts = 0;
-    const interval = setInterval(() => {
-      attempts++;
-      const tagBlocks = document.querySelectorAll('div[data-testid^="repotagsImageList-"]');
-      console.log(`[Docker Download Plugin] Attempt ${attempts}: Found ${tagBlocks.length} tag blocks`);
+  // 检查是否有 tag 块或架构行
+  function hasTagBlocks() {
+    const tagBlocks = document.querySelectorAll('div[data-testid^="repotagsImageList-"]');
+    if (tagBlocks.length > 0) return true;
 
-      // 如果找到tag块或超过20次尝试（10秒）
-      if (tagBlocks.length > 0 || attempts > 20) {
-        clearInterval(interval);
-        if (tagBlocks.length > 0) {
-          console.log('[Docker Download Plugin] Tag blocks found, injecting buttons');
-          callback();
-        } else {
-          console.log('[Docker Download Plugin] No tag blocks found after 10 seconds, trying alternative selectors');
-          // 尝试其他可能的选择器
-          const altSelectors = [
-            'table tbody tr',
-            '[data-testid*="tag"]',
-            '.tag-item',
-            '.repository-tag'
-          ];
+    // 检查是否有架构行
+    const archRows = document.querySelectorAll('tr td.osArchItem, .architecture-row, [class*="arch"]');
+    return archRows.length > 0;
+  }
 
-          for (const selector of altSelectors) {
-            const elements = document.querySelectorAll(selector);
-            console.log(`[Docker Download Plugin] Trying selector "${selector}": Found ${elements.length} elements`);
-            if (elements.length > 0) {
-              callback();
-              break;
+  // 尝试注入按钮
+  function tryInjectButtons() {
+    if (!hasTagBlocks()) {
+      return false;
+    }
+    injectDownloadButtons();
+    return true;
+  }
+
+  // 使用 MutationObserver 监听 DOM 变化
+  function setupMutationObserver() {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0) {
+          // 检查新添加的节点是否包含 tag 块
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // 检查节点本身或其子元素
+              const hasTagBlock = node.querySelector && (
+                node.querySelector('div[data-testid^="repotagsImageList-"]') ||
+                node.querySelector('td.osArchItem') ||
+                node.querySelector('[class*="arch"]')
+              );
+
+              // 或者节点本身就是 tag 块
+              const isTagBlock = node.getAttribute &&
+                node.getAttribute('data-testid') &&
+                node.getAttribute('data-testid').startsWith('repotagsImageList-');
+
+              if (hasTagBlock || isTagBlock) {
+                console.log('[Docker Download Plugin] MutationObserver detected tag block, injecting buttons');
+                injectDownloadButtons();
+                return;
+              }
             }
           }
         }
       }
-    }, 500);
+    });
+
+    // 开始监听整个 document 的变化
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    return observer;
+  }
+
+  // 增强的等待函数（MutationObserver + 轮询双保险）
+  function waitForTagTable(callback) {
+    let injected = false;
+    let attempts = 0;
+    const maxAttempts = 60; // 增加到 60 次（30秒）
+
+    // 立即尝试一次
+    if (tryInjectButtons()) {
+      console.log('[Docker Download Plugin] Buttons injected immediately on page load');
+      injected = true;
+    }
+
+    // 设置 MutationObserver
+    const observer = setupMutationObserver();
+
+    // 同时使用轮询作为备用（MutationObserver 可能遗漏某些情况）
+    const interval = setInterval(() => {
+      attempts++;
+      console.log(`[Docker Download Plugin] Polling attempt ${attempts}/${maxAttempts}`);
+
+      if (injected) {
+        clearInterval(interval);
+        observer.disconnect();
+        console.log('[Docker Download Plugin] Button injection completed');
+        return;
+      }
+
+      if (tryInjectButtons()) {
+        console.log('[Docker Download Plugin] Buttons injected via polling');
+        injected = true;
+        clearInterval(interval);
+        observer.disconnect();
+        return;
+      }
+
+      // 超过最大尝试次数
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        observer.disconnect();
+        console.warn('[Docker Download Plugin] No tag blocks found after 30 seconds');
+        console.log('[Docker Download Plugin] Page URL:', location.href);
+        console.log('[Docker Download Plugin] Ready state:', document.readyState);
+      }
+    }, 500); // 每 500ms 检查一次
   }
 
   // 遍历所有tag块，为每个架构行插入下载按钮，按钮携带正确tag
@@ -431,14 +499,61 @@ async function downloadSingleLayer(image, layer, token) {
   // 调试信息
   console.log('[Docker Download Plugin] Content script loaded on:', location.href);
   console.log('[Docker Download Plugin] Pathname:', location.pathname);
+  console.log('[Docker Download Plugin] Ready state:', document.readyState);
 
-  // 入口
-  waitForTagTable(injectDownloadButtons);
+  // 等待 DOM 加载完成后再尝试注入
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[Docker Download Plugin] DOMContentLoaded fired');
+      // 短暂延迟确保 React 渲染完成
+      setTimeout(() => {
+        waitForTagTable(injectDownloadButtons);
+      }, 100);
+    });
+  } else {
+    // DOM 已经加载完成
+    console.log('[Docker Download Plugin] DOM already loaded');
+    // 如果已经加载完成，给一点时间让 React 渲染
+    setTimeout(() => {
+      waitForTagTable(injectDownloadButtons);
+    }, 500);
+  }
 
-  // 监听SPA页面跳转（DockerHub为SPA，需监听页面变化）
+  // 监听 SPA 页面跳转（DockerHub 为 SPA，需监听页面变化）
   let lastUrl = location.href;
+
+  // 1. 监听浏览器前进/后退
+  window.addEventListener('popstate', () => {
+    console.log('[Docker Download Plugin] Popstate event detected');
+    setTimeout(() => {
+      waitForTagTable(injectDownloadButtons);
+    }, 100);
+  });
+
+  // 2. Hook history.pushState 和 history.replaceState
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState;
+
+  history.pushState = function(...args) {
+    originalPushState.apply(this, args);
+    console.log('[Docker Download Plugin] pushState called');
+    setTimeout(() => {
+      waitForTagTable(injectDownloadButtons);
+    }, 100);
+  };
+
+  history.replaceState = function(...args) {
+    originalReplaceState.apply(this, args);
+    console.log('[Docker Download Plugin] replaceState called');
+    setTimeout(() => {
+      waitForTagTable(injectDownloadButtons);
+    }, 100);
+  };
+
+  // 3. 使用 setInterval 作为备用方案（捕获其他可能的路由变化）
   setInterval(() => {
     if (location.href !== lastUrl) {
+      console.log('[Docker Download Plugin] URL changed (polling):', location.href);
       lastUrl = location.href;
       waitForTagTable(injectDownloadButtons);
     }
