@@ -151,7 +151,13 @@ function findTask(image, tag, arch) {
 
 async function getDockerToken(image) {
   const url = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image}:pull`;
+  console.log(`[getDockerToken] Fetching token for image: ${image}`);
+  console.log(`[getDockerToken] Token URL: ${url.replace(image, '***')}`); // 隐藏镜像名
   const data = await proxyFetch(url, {}, 'json');
+  if (!data || !data.token) {
+    throw new Error(`Failed to get token for image: ${image}. Response: ${JSON.stringify(data)}`);
+  }
+  console.log(`[getDockerToken] Token fetched successfully`);
   return data.token;
 }
 

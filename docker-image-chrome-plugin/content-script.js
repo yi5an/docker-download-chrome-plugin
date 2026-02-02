@@ -322,30 +322,50 @@ async function downloadSingleLayer(image, layer, token) {
         }
 
         // 从URL获取镜像名称
-        // 支持: 
+        // 支持:
         // 1. /_/python (官方镜像 -> library/python)
         // 2. /r/user/repo (旧版URL)
-        // 3. /repository/docker/user/repo (新版URL?) - 需要确认，通常是 /repository/docker/namespace/image
-        // 这里尝试几个常见的模式
+        // 3. /r/arm32v7/redis (用户镜像，如 arm32v7/redis)
+        // 4. /repository/docker/arm32v7/redis (新版URL)
         let image = '';
         const officialMatch = location.pathname.match(/^\/_\/([^\/\s]+)/);
         if (officialMatch) {
+          // 官方镜像：/_/python -> library/python
           image = `library/${officialMatch[1]}`;
         } else {
-          const match = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/) ||
-            location.pathname.match(/\/repository\/[^/]+\/([^/]+)\/([^/]+)/) || // 可能的结构 /repository/docker/u/r ?，或者直接 loose match
-            location.pathname.match(/\/repository\/([^/]+)\/([^/]+)/); // 如果是 direct namespace
+          // 尝试多种 URL 格式
+          // 格式1: /r/arm32v7/redis
+          // 格式2: /r/namespace/image
+          // 格式3: /repository/docker/namespace/image
+          // 格式4: /repository/docker/r/arm32v7/redis (罕见)
+
+          const oldUrlMatch = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/);
+          const newUrlMatch = location.pathname.match(/\/repository\/docker\/r\/([^/]+)\/([^/]+)/) ||
+                            location.pathname.match(/\/repository\/docker\/([^/]+)\/([^/]+)/);
+
+          const match = oldUrlMatch || newUrlMatch;
 
           if (match) {
+            // 用户镜像：arm32v7/redis
             image = `${match[1]}/${match[2]}`;
+            console.log(`[Docker Download] Extracted image from URL: ${image}`);
           } else {
-            // Fallback: 尝试提取最后两个path segments，或者页面标题
-            // 但对于 /_/python 必须转为 library/python， 否则registry API 404
-            // 如果 match 失败，可能不在标准页面
+            // Fallback: 从 URL 路径提取最后两个 segments
+            const segments = location.pathname.split('/').filter(s => s && s !== 'tags' && s !== 'r' && s !== 'repository' && s !== 'docker');
+            if (segments.length >= 2) {
+              // 取最后两个作为镜像名
+              const secondLast = segments[segments.length - 2];
+              const last = segments[segments.length - 1];
+              // 确保不是 'tags' 这样的关键字
+              if (secondLast && last && secondLast !== 'tags' && last !== 'tags') {
+                image = `${secondLast}/${last}`;
+                console.log(`[Docker Download] Fallback image extraction: ${image}`);
+              }
+            }
           }
         }
 
-        // 再次兜底检查：如果是官方镜像页面，上面的 regex 可能 missed
+        // 再次兜底检查：如果是官方镜像页面
         if (!image && location.pathname.includes('/_/')) {
           const parts = location.pathname.split('/_/');
           if (parts.length > 1) {
@@ -353,6 +373,8 @@ async function downloadSingleLayer(image, layer, token) {
             if (name) image = `library/${name}`;
           }
         }
+
+        console.log(`[Docker Download] Final image name: ${image}, tag: ${tag}, arch: ${arch}`);
 
         const btn = document.createElement('button');
         btn.className = 'docker-download-btn';
