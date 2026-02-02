@@ -324,9 +324,16 @@ async function downloadSingleLayer(image, layer, token) {
         // 从URL获取镜像名称
         // 支持:
         // 1. /_/python (官方镜像 -> library/python)
-        // 2. /r/user/repo (旧版URL)
-        // 3. /r/arm32v7/redis (用户镜像，如 arm32v7/redis)
-        // 4. /repository/docker/arm32v7/redis (新版URL)
+        // 2. /r/arm32v7/redis (官方镜像架构页面 -> library/redis)
+        // 3. /r/user/repo (真正的用户镜像)
+        // 4. /repository/docker/arm32v7/redis (新版官方架构页面)
+
+        // 官方架构前缀列表（这些不是命名空间，而是官方镜像的架构变体）
+        const officialArchPrefixes = [
+          'arm32v5', 'arm32v6', 'arm32v7', 'arm64v8', 'amd64', 'i386',
+          'ppc64le', 's390x', 'riscv64', 'windows-amd64', 'windows-arm64'
+        ];
+
         let image = '';
         const officialMatch = location.pathname.match(/^\/_\/([^\/\s]+)/);
         if (officialMatch) {
@@ -334,11 +341,6 @@ async function downloadSingleLayer(image, layer, token) {
           image = `library/${officialMatch[1]}`;
         } else {
           // 尝试多种 URL 格式
-          // 格式1: /r/arm32v7/redis
-          // 格式2: /r/namespace/image
-          // 格式3: /repository/docker/namespace/image
-          // 格式4: /repository/docker/r/arm32v7/redis (罕见)
-
           const oldUrlMatch = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/);
           const newUrlMatch = location.pathname.match(/\/repository\/docker\/r\/([^/]+)\/([^/]+)/) ||
                             location.pathname.match(/\/repository\/docker\/([^/]+)\/([^/]+)/);
@@ -346,18 +348,33 @@ async function downloadSingleLayer(image, layer, token) {
           const match = oldUrlMatch || newUrlMatch;
 
           if (match) {
-            // 用户镜像：arm32v7/redis
-            image = `${match[1]}/${match[2]}`;
-            console.log(`[Docker Download] Extracted image from URL: ${image}`);
+            const namespace = match[1];
+            const imageName = match[2];
+
+            // 检查是否是官方架构前缀
+            if (officialArchPrefixes.includes(namespace)) {
+              // 这是官方镜像的架构页面：/r/arm32v7/redis -> library/redis
+              image = `library/${imageName}`;
+              console.log(`[Docker Download] Detected official architecture page: ${namespace}/${imageName} -> library/${imageName}`);
+            } else {
+              // 这是真正的用户镜像：/r/username/redis -> username/redis
+              image = `${namespace}/${imageName}`;
+              console.log(`[Docker Download] Detected user image: ${namespace}/${imageName}`);
+            }
           } else {
             // Fallback: 从 URL 路径提取最后两个 segments
-            const segments = location.pathname.split('/').filter(s => s && s !== 'tags' && s !== 'r' && s !== 'repository' && s !== 'docker');
+            const segments = location.pathname.split('/').filter(s =>
+              s && s !== 'tags' && s !== 'r' && s !== 'repository' && s !== 'docker' && !officialArchPrefixes.includes(s)
+            );
             if (segments.length >= 2) {
-              // 取最后两个作为镜像名
               const secondLast = segments[segments.length - 2];
               const last = segments[segments.length - 1];
-              // 确保不是 'tags' 这样的关键字
-              if (secondLast && last && secondLast !== 'tags' && last !== 'tags') {
+              // 再次检查是否是官方架构前缀
+              if (officialArchPrefixes.includes(secondLast)) {
+                // /arm32v7/redis -> library/redis
+                image = `library/${last}`;
+                console.log(`[Docker Download] Fallback: official arch ${secondLast}/${last} -> library/${last}`);
+              } else if (secondLast && last) {
                 image = `${secondLast}/${last}`;
                 console.log(`[Docker Download] Fallback image extraction: ${image}`);
               }
