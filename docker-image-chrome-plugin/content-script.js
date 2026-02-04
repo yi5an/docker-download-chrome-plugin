@@ -233,11 +233,13 @@ async function downloadSingleLayer(image, layer, token) {
 
   // 尝试注入按钮
   function tryInjectButtons() {
-    if (!hasTagBlocks()) {
-      return false;
-    }
+    // 直接尝试注入，不再提前检查
+    // 因为页面内容是异步加载的，hasTagBlocks() 可能误报
     injectDownloadButtons();
-    return true;
+
+    // 检查是否实际注入了按钮
+    const buttons = document.querySelectorAll('.docker-download-btn');
+    return buttons.length > 0;
   }
 
   // 使用 MutationObserver 监听 DOM 变化
@@ -284,7 +286,7 @@ async function downloadSingleLayer(image, layer, token) {
   function waitForTagTable(callback) {
     let injected = false;
     let attempts = 0;
-    const maxAttempts = 60; // 增加到 60 次（30秒）
+    const maxAttempts = 120; // 120 次（120秒）
 
     // 立即尝试一次
     if (tryInjectButtons()) {
@@ -319,181 +321,228 @@ async function downloadSingleLayer(image, layer, token) {
       if (attempts >= maxAttempts) {
         clearInterval(interval);
         observer.disconnect();
-        console.warn('[Docker Download Plugin] No tag blocks found after 30 seconds');
+        console.warn('[Docker Download Plugin] No tag blocks found after 120 seconds');
         console.log('[Docker Download Plugin] Page URL:', location.href);
         console.log('[Docker Download Plugin] Ready state:', document.readyState);
+
+        // 最后尝试：直接查找并注入
+        console.log('[Docker Download Plugin] Last attempt: forcing injection');
+        injectDownloadButtons();
       }
-    }, 500); // 每 500ms 检查一次
+    }, 1000); // 每 1000ms 检查一次
+  }
+
+  // 从URL获取镜像名称和tag
+  function getImageAndTagFromURL() {
+    // 官方架构前缀列表（这些不是命名空间，而是官方镜像的架构变体）
+    const officialArchPrefixes = [
+      'arm32v5', 'arm32v6', 'arm32v7', 'arm64v8', 'amd64', 'i386',
+      'ppc64le', 's390x', 'riscv64', 'windows-amd64', 'windows-arm64'
+    ];
+
+    let image = '';
+    let tag = 'latest';
+
+    const officialMatch = location.pathname.match(/^\/_\/([^\/\s]+)/);
+    if (officialMatch) {
+      // 官方镜像：/_/python -> library/python
+      image = `library/${officialMatch[1]}`;
+    } else {
+      // 尝试多种 URL 格式
+      const oldUrlMatch = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/);
+      const newUrlMatch = location.pathname.match(/\/repository\/docker\/r\/([^/]+)\/([^/]+)/) ||
+                        location.pathname.match(/\/repository\/docker\/([^/]+)\/([^/]+)/);
+
+      const match = oldUrlMatch || newUrlMatch;
+
+      if (match) {
+        const namespace = match[1];
+        const imageName = match[2];
+
+        // 检查是否是官方架构前缀
+        if (officialArchPrefixes.includes(namespace)) {
+          // 这是官方镜像的架构页面：/r/arm32v7/redis -> library/redis
+          image = `library/${imageName}`;
+          console.log(`[Docker Download] Detected official architecture page: ${namespace}/${imageName} -> library/${imageName}`);
+        } else {
+          // 这是真正的用户镜像：/r/username/redis -> username/redis
+          image = `${namespace}/${imageName}`;
+          console.log(`[Docker Download] Detected user image: ${namespace}/${imageName}`);
+        }
+      } else {
+        // Fallback: 从 URL 路径提取最后两个 segments
+        const segments = location.pathname.split('/').filter(s =>
+          s && s !== 'tags' && s !== 'r' && s !== 'repository' && s !== 'docker' && !officialArchPrefixes.includes(s)
+        );
+        if (segments.length >= 2) {
+          const secondLast = segments[segments.length - 2];
+          const last = segments[segments.length - 1];
+          // 再次检查是否是官方架构前缀
+          if (officialArchPrefixes.includes(secondLast)) {
+            // /arm32v7/redis -> library/redis
+            image = `library/${last}`;
+            console.log(`[Docker Download] Fallback: official arch ${secondLast}/${last} -> library/${last}`);
+          } else if (secondLast && last) {
+            image = `${secondLast}/${last}`;
+            console.log(`[Docker Download] Fallback image extraction: ${image}`);
+          }
+        }
+      }
+    }
+
+    // 再次兜底检查：如果是官方镜像页面
+    if (!image && location.pathname.includes('/_/')) {
+      const parts = location.pathname.split('/_/');
+      if (parts.length > 1) {
+        const name = parts[1].split('/')[0];
+        if (name) image = `library/${name}`;
+      }
+    }
+
+    // 尝试从URL中提取tag
+    const tagMatch = location.pathname.match(/\/tags\/([^/]+)/);
+    if (tagMatch) {
+      tag = tagMatch[1];
+    }
+
+    return { image, tag };
   }
 
   // 遍历所有tag块，为每个架构行插入下载按钮，按钮携带正确tag
   function injectDownloadButtons() {
     console.log('[Docker Download Plugin] Starting button injection');
     injectStyle();
-    // 支持新版和旧版DockerHub页面结构
+
+    // 支持多种DockerHub页面结构
+    // 1. 旧版: div[data-testid^="repotagsImageList-"]
+    // 2. 新版: 直接查找包含架构行的表格
     const tagBlocks = document.querySelectorAll('div[data-testid^="repotagsImageList-"], div.tag-block');
-    console.log('[Docker Download Plugin] Found tag blocks:', tagBlocks.length);
+    const tables = document.querySelectorAll('table');
 
-    tagBlocks.forEach((tagBlock, index) => {
-      console.log(`[Docker Download Plugin] Processing tag block ${index + 1}:`, tagBlock);
-      // 获取tag名（在上方同级的a[data-testid="navToImage"]内或其他位置）
-      let tag = '';
-      const tagNav = tagBlock.parentElement.querySelector('a[data-testid="navToImage"], .tag-name');
-      if (tagNav) tag = tagNav.textContent.trim();
-      if (!tag) {
-        // 尝试从URL中获取tag
-        const tagMatch = location.pathname.match(/\/tags\/([^/]+)/);
-        tag = tagMatch ? tagMatch[1] : 'latest';
-      }
+    console.log('[Docker Download Plugin] Found tag blocks:', tagBlocks.length, 'tables:', tables.length);
 
-      // 遍历该tag块下所有架构行
-      const rows = tagBlock.querySelectorAll('tr, .architecture-row');
+    // 如果找到旧版tag blocks，使用旧逻辑
+    if (tagBlocks.length > 0) {
+      tagBlocks.forEach((tagBlock, index) => {
+        console.log(`[Docker Download Plugin] Processing tag block ${index + 1}:`, tagBlock);
+        processTagBlock(tagBlock, 'latest');
+      });
+      return;
+    }
+
+    // 新版页面结构：直接处理表格
+    tables.forEach((table, index) => {
+      const hasArchCell = table.querySelector('td.osArchItem');
+      if (!hasArchCell) return;
+
+      console.log(`[Docker Download Plugin] Processing table ${index + 1} with architecture cells`);
+
+      // 从URL获取镜像名称和tag
+      const { image, tag } = getImageAndTagFromURL();
+
+      // 遍历该表格下所有架构行
+      const rows = table.querySelectorAll('tr, .architecture-row');
       rows.forEach(row => {
-        const archCell = row.querySelector('td.osArchItem, .arch-cell');
-        if (!archCell) return;
-        if (archCell.querySelector('.docker-download-btn')) return;
-
-        // 提取架构信息，支持多种格式
-        let archText = archCell.textContent.trim();
-        let arch = archText.includes('/') ? archText.split('/').pop() : archText;
-        const originalArch = arch; // 保存原始架构名称用于显示
-
-        // 标准化架构名称（完整映射表）
-        // AMD64/x86
-        if (arch.includes('amd64') || arch.includes('x86_64') || arch.includes('x86-64')) {
-          arch = 'amd64';
-        }
-        // ARM 64位
-        else if (arch.includes('arm64') || arch.includes('aarch64') || arch.includes('arm/v8')) {
-          arch = 'arm64';
-        }
-        // ARM 32位 (包括 v6, v7)
-        else if (arch.includes('arm') || arch.includes('v7') || arch.includes('arm/v7') ||
-                 arch.includes('armhf') || arch.includes('armel') || arch.includes('v6')) {
-          arch = 'arm';
-        }
-        // 386
-        else if (arch.includes('386') || arch.includes('i386') || arch.includes('x86')) {
-          arch = '386';
-        }
-        // ppc64le
-        else if (arch.includes('ppc64le')) {
-          arch = 'ppc64le';
-        }
-        // s390x
-        else if (arch.includes('s390x')) {
-          arch = 's390x';
-        }
-        // riscv64
-        else if (arch.includes('riscv64')) {
-          arch = 'riscv64';
-        }
-
-        // 从URL获取镜像名称
-        // 支持:
-        // 1. /_/python (官方镜像 -> library/python)
-        // 2. /r/arm32v7/redis (官方镜像架构页面 -> library/redis)
-        // 3. /r/user/repo (真正的用户镜像)
-        // 4. /repository/docker/arm32v7/redis (新版官方架构页面)
-
-        // 官方架构前缀列表（这些不是命名空间，而是官方镜像的架构变体）
-        const officialArchPrefixes = [
-          'arm32v5', 'arm32v6', 'arm32v7', 'arm64v8', 'amd64', 'i386',
-          'ppc64le', 's390x', 'riscv64', 'windows-amd64', 'windows-arm64'
-        ];
-
-        let image = '';
-        const officialMatch = location.pathname.match(/^\/_\/([^\/\s]+)/);
-        if (officialMatch) {
-          // 官方镜像：/_/python -> library/python
-          image = `library/${officialMatch[1]}`;
-        } else {
-          // 尝试多种 URL 格式
-          const oldUrlMatch = location.pathname.match(/\/r\/([^/]+)\/([^/]+)/);
-          const newUrlMatch = location.pathname.match(/\/repository\/docker\/r\/([^/]+)\/([^/]+)/) ||
-                            location.pathname.match(/\/repository\/docker\/([^/]+)\/([^/]+)/);
-
-          const match = oldUrlMatch || newUrlMatch;
-
-          if (match) {
-            const namespace = match[1];
-            const imageName = match[2];
-
-            // 检查是否是官方架构前缀
-            if (officialArchPrefixes.includes(namespace)) {
-              // 这是官方镜像的架构页面：/r/arm32v7/redis -> library/redis
-              image = `library/${imageName}`;
-              console.log(`[Docker Download] Detected official architecture page: ${namespace}/${imageName} -> library/${imageName}`);
-            } else {
-              // 这是真正的用户镜像：/r/username/redis -> username/redis
-              image = `${namespace}/${imageName}`;
-              console.log(`[Docker Download] Detected user image: ${namespace}/${imageName}`);
-            }
-          } else {
-            // Fallback: 从 URL 路径提取最后两个 segments
-            const segments = location.pathname.split('/').filter(s =>
-              s && s !== 'tags' && s !== 'r' && s !== 'repository' && s !== 'docker' && !officialArchPrefixes.includes(s)
-            );
-            if (segments.length >= 2) {
-              const secondLast = segments[segments.length - 2];
-              const last = segments[segments.length - 1];
-              // 再次检查是否是官方架构前缀
-              if (officialArchPrefixes.includes(secondLast)) {
-                // /arm32v7/redis -> library/redis
-                image = `library/${last}`;
-                console.log(`[Docker Download] Fallback: official arch ${secondLast}/${last} -> library/${last}`);
-              } else if (secondLast && last) {
-                image = `${secondLast}/${last}`;
-                console.log(`[Docker Download] Fallback image extraction: ${image}`);
-              }
-            }
-          }
-        }
-
-        // 再次兜底检查：如果是官方镜像页面
-        if (!image && location.pathname.includes('/_/')) {
-          const parts = location.pathname.split('/_/');
-          if (parts.length > 1) {
-            const name = parts[1].split('/')[0];
-            if (name) image = `library/${name}`;
-          }
-        }
-
-        console.log(`[Docker Download] Final image name: ${image}, tag: ${tag}, arch: ${arch}`);
-
-        const btn = document.createElement('button');
-        btn.className = 'docker-download-btn';
-        btn.innerHTML = downloadSvg;
-        btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
-
-        // 在按钮点击事件里，直接发起后台下载请求
-        btn.onclick = function (e) {
-          e.stopPropagation();
-          try {
-            chrome.runtime.sendMessage({ type: 'start-download', image, tag, arch });
-            btn.disabled = true;
-            btn.querySelector('path').setAttribute('fill', '#aaa');
-            btn.title = '已提交后台下载';
-            showNotification(`开始下载 ${image}:${tag} (${originalArch})，请在插件弹窗中查看进度`, 'success');
-            setTimeout(() => {
-              btn.disabled = false;
-              btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
-              btn.querySelector('path').setAttribute('fill', '#333');
-            }, 2000);
-          } catch (err) {
-            showNotification('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err), 'error');
-          }
-        };
-
-        // 插入按钮到合适位置
-        const p = archCell.querySelector('p');
-        if (p) {
-          p.appendChild(btn);
-        } else {
-          archCell.appendChild(btn);
-        }
+        processArchCell(row, image, tag);
       });
     });
+  }
+
+  // 处理单个tag块（旧版页面结构）
+  function processTagBlock(tagBlock, defaultTag) {
+    // 获取tag名
+    let tag = '';
+    const tagNav = tagBlock.parentElement.querySelector('a[data-testid="navToImage"], .tag-name');
+    if (tagNav) tag = tagNav.textContent.trim();
+    if (!tag) {
+      const tagMatch = location.pathname.match(/\/tags\/([^/]+)/);
+      tag = tagMatch ? tagMatch[1] : defaultTag;
+    }
+
+    // 遍历该tag块下所有架构行
+    const rows = tagBlock.querySelectorAll('tr, .architecture-row');
+    const { image } = getImageAndTagFromURL();
+
+    rows.forEach(row => {
+      processArchCell(row, image, tag);
+    });
+  }
+
+  // 处理单个架构单元格
+  function processArchCell(row, image, tag) {
+    const archCell = row.querySelector('td.osArchItem, .arch-cell');
+    if (!archCell) return;
+    if (archCell.querySelector('.docker-download-btn')) return;
+
+    // 提取架构信息，支持多种格式
+    let archText = archCell.textContent.trim();
+    let arch = archText.includes('/') ? archText.split('/').pop() : archText;
+    const originalArch = arch; // 保存原始架构名称用于显示
+
+    // 标准化架构名称（完整映射表）
+    // AMD64/x86
+    if (arch.includes('amd64') || arch.includes('x86_64') || arch.includes('x86-64')) {
+      arch = 'amd64';
+    }
+    // ARM 64位
+    else if (arch.includes('arm64') || arch.includes('aarch64') || arch.includes('arm/v8')) {
+      arch = 'arm64';
+    }
+    // ARM 32位 (包括 v6, v7)
+    else if (arch.includes('arm') || arch.includes('v7') || arch.includes('arm/v7') ||
+             arch.includes('armhf') || arch.includes('armel') || arch.includes('v6')) {
+      arch = 'arm';
+    }
+    // 386
+    else if (arch.includes('386') || arch.includes('i386') || arch.includes('x86')) {
+      arch = '386';
+    }
+    // ppc64le
+    else if (arch.includes('ppc64le')) {
+      arch = 'ppc64le';
+    }
+    // s390x
+    else if (arch.includes('s390x')) {
+      arch = 's390x';
+    }
+    // riscv64
+    else if (arch.includes('riscv64')) {
+      arch = 'riscv64';
+    }
+
+    console.log(`[Docker Download] Processing: ${image}:${tag} (${arch})`);
+
+    const btn = document.createElement('button');
+    btn.className = 'docker-download-btn';
+    btn.innerHTML = downloadSvg;
+    btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
+
+    // 在按钮点击事件里，直接发起后台下载请求
+    btn.onclick = function (e) {
+      e.stopPropagation();
+      try {
+        chrome.runtime.sendMessage({ type: 'start-download', image, tag, arch });
+        btn.disabled = true;
+        btn.querySelector('path').setAttribute('fill', '#aaa');
+        btn.title = '已提交后台下载';
+        showNotification(`开始下载 ${image}:${tag} (${originalArch})，请在插件弹窗中查看进度`, 'success');
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
+          btn.querySelector('path').setAttribute('fill', '#333');
+        }, 2000);
+      } catch (err) {
+        showNotification('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err), 'error');
+      }
+    };
+
+    // 插入按钮到合适位置
+    const p = archCell.querySelector('p');
+    if (p) {
+      p.appendChild(btn);
+    } else {
+      archCell.appendChild(btn);
+    }
   }
 
   // 调试信息
@@ -513,10 +562,10 @@ async function downloadSingleLayer(image, layer, token) {
   } else {
     // DOM 已经加载完成
     console.log('[Docker Download Plugin] DOM already loaded');
-    // 如果已经加载完成，给一点时间让 React 渲染
+    // 如果已经加载完成，给更多时间让 React 渲染（DockerHub 加载较慢）
     setTimeout(() => {
       waitForTagTable(injectDownloadButtons);
-    }, 500);
+    }, 2000);
   }
 
   // 监听 SPA 页面跳转（DockerHub 为 SPA，需监听页面变化）

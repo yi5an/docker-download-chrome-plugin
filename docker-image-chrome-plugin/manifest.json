@@ -1,23 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Docker 镜像一键下载器",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。",
   "permissions": [
     "activeTab",
     "storage",
-    "tabs",
     "downloads"
   ],
   "host_permissions": [
     "https://hub.docker.com/*",
     "https://registry-1.docker.io/*",
-    "http://172.16.28.250:7000/*",
-    "http://172.16.28.250:3000/*",
+    "http://123.57.165.38:7000/*",
     "http://ip-api.com/*",
-    "http://localhost:3000/*",
-    "https://auth.docker.io/*",
-    "https://production.cloudflare.docker.com/*"
+    "https://auth.docker.io/*"
   ],
   "background": {
     "service_worker": "background-wrapper.js"
@@ -29,7 +25,8 @@
         "https://hub.docker.com/_/*",
         "https://hub.docker.com/r/*/tags*",
         "https://hub.docker.com/_/*/tags*",
-        "https://hub.docker.com/*/tags*"
+        "https://hub.docker.com/*/tags*",
+        "https://hub.docker.com/r/*/*/tags*"
       ],
       "js": [
         "config.js",
