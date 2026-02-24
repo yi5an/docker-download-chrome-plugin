@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "storage",
-    "downloads"
+    "downloads",
+    "alarms"
   ],
   "host_permissions": [
     "https://hub.docker.com/*",

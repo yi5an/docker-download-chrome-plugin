@@ -56,29 +56,24 @@ async function refreshToken(image) {
 
 // ==================== Service Worker 保活机制 ====================
 // Chrome Manifest V3 的 Service Worker 会在空闲约 30 秒后终止
-// 需要通过定期心跳来保持活跃
+// 使用 chrome.alarms API 实现可靠的保活机制
 
-let keepAliveInterval = null;
 let activeDownloadCount = 0;
+const KEEPALIVE_ALARM_NAME = 'docker-download-keepalive';
 
 /**
  * 启动保活机制
- * 在下载任务进行期间定期发送心跳，防止 Service Worker 被终止
+ * 使用 chrome.alarms 实现更可靠的保活
  */
 function startKeepAlive() {
   activeDownloadCount++;
-  if (keepAliveInterval) return; // 已经在运行
-
-  // 每 20 秒发送一次心跳（小于 30 秒的 Service Worker 超时时间）
-  keepAliveInterval = setInterval(() => {
-    // 使用 chrome.alarms 或简单的 storage 操作来保持活跃
-    chrome.storage.local.get('__keepalive__', () => {
-      // 忽略结果，只是为了触发 Service Worker 活动
-      console.log('[KeepAlive] Heartbeat sent, active downloads:', activeDownloadCount);
-    });
-  }, 20000);
-
   console.log('[KeepAlive] Started, active downloads:', activeDownloadCount);
+
+  // 创建或更新 alarm（每 20 秒触发一次）
+  chrome.alarms.create(KEEPALIVE_ALARM_NAME, {
+    delayInMinutes: 0.3,  // 约 18 秒后首次触发
+    periodInMinutes: 0.3  // 每 18 秒触发一次
+  });
 }
 
 /**
@@ -87,15 +82,25 @@ function startKeepAlive() {
  */
 function stopKeepAlive() {
   activeDownloadCount--;
+  console.log('[KeepAlive] Stopping, remaining downloads:', activeDownloadCount);
+
   if (activeDownloadCount <= 0) {
     activeDownloadCount = 0;
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
-      keepAliveInterval = null;
-      console.log('[KeepAlive] Stopped');
-    }
+    chrome.alarms.clear(KEEPALIVE_ALARM_NAME, (wasCleared) => {
+      console.log('[KeepAlive] Alarm cleared:', wasCleared);
+    });
   }
 }
+
+// 监听 alarm 事件
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === KEEPALIVE_ALARM_NAME) {
+    // 执行一个简单的操作来保持 Service Worker 活跃
+    chrome.storage.local.get('__keepalive__', () => {
+      console.log('[KeepAlive] Heartbeat via alarm, active downloads:', activeDownloadCount);
+    });
+  }
+});
 
 // ==================== 超时控制配置 ====================
 const FETCH_TIMEOUT = 120000; // 单次请求超时：120 秒
