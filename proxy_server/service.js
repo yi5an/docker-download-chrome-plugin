@@ -7,6 +7,12 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const USE_PROXY = process.env.USE_PROXY === 'true';
 const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
 
+// 缓存配置（可通过环境变量控制）
+const CACHE_BLOB = process.env.CACHE_BLOB === 'true'; // 是否缓存blob请求
+const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '50') * 1024 * 1024; // blob缓存大小限制（MB）
+
+console.log(`[Config] Blob caching: ${CACHE_BLOB ? 'ENABLED' : 'DISABLED'}, Max size: ${(CACHE_BLOB_MAX_SIZE / 1024 / 1024).toFixed(2)} MB`);
+
 // 根据环境变量决定是否使用代理
 const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
 
@@ -398,6 +404,9 @@ app.get('/proxy', async (req, res) => {
     // 检查是否是 manifest 请求
     const isManifestRequest = targetUrl && targetUrl.includes('/manifests/');
 
+    // 检查是否应该跳过blob缓存（根据配置）
+    const shouldSkipBlobCache = isBlobRequest && (!CACHE_BLOB || false);
+
     console.log('[proxy] 原始请求:', req.originalUrl);
     console.log('[proxy] 解析目标:', targetUrl);
     const skipCacheByHeader = req.headers['x-skip-cache'] === 'true';
@@ -431,8 +440,8 @@ app.get('/proxy', async (req, res) => {
         console.log('[proxy] 清理后的 URL (用于缓存):', cleanUrl);
 
         // 检查缓存（如果需要跳过缓存则不检查）
-        // 注意：blob 请求不使用缓存（文件太大，且可能有问题）
-        if (!skipCache && !isBlobRequest) {
+        // 注意：blob 请求根据配置决定是否使用缓存
+        if (!skipCache && !shouldSkipBlobCache) {
             const cached = responseCache.get(cacheKey);
             if (cached) {
                 console.log('[Cache] HIT for:', cleanUrl, 'auth:', authHash);
@@ -450,8 +459,12 @@ app.get('/proxy', async (req, res) => {
                 // 发送缓存的数据
                 return res.send(cached.data);
             }
-        } else if (isBlobRequest) {
-            console.log('[Cache] SKIPPED (blob request, too large)');
+        } else if (shouldSkipBlobCache) {
+            if (isBlobRequest) {
+                console.log('[Cache] SKIPPED (blob request, disabled by config)');
+            } else {
+                console.log('[Cache] SKIPPED for:', cleanUrl, '(cache disabled)');
+            }
         } else {
             console.log('[Cache] SKIPPED for:', cleanUrl);
         }
@@ -501,10 +514,12 @@ app.get('/proxy', async (req, res) => {
 
         // 缓存策略：
         // 1. 只缓存成功的响应（status === 200）
-        // 2. 不缓存 blob 请求（文件太大）
-        // 3. 不缓存过大的响应（限制 50MB）
+        // 2. 根据配置决定是否缓存 blob 请求
+        // 3. 不缓存过大的响应（限制由CACHE_BLOB_MAX_SIZE控制）
         // 4. 缓存键包含 auth hash，避免 token 问题
-        if (resp.status === 200 && !isBlobRequest && buffer.length < 50 * 1024 * 1024) {
+        const shouldCache = resp.status === 200 && buffer.length < CACHE_BLOB_MAX_SIZE;
+
+        if (shouldCache) {
             responseCache.set(cacheKey, {
                 data: buffer,
                 contentType: contentType,
@@ -515,7 +530,11 @@ app.get('/proxy', async (req, res) => {
         } else if (resp.status !== 200) {
             console.log('[Cache] NOT cached (non-200 response):', resp.status);
         } else if (isBlobRequest) {
-            console.log('[Cache] NOT cached (blob request)');
+            if (!CACHE_BLOB) {
+                console.log('[Cache] NOT cached (blob request, disabled by config)');
+            } else {
+                console.log('[Cache] NOT cached (blob request, too large):', 'size:', buffer.length, 'limit:', CACHE_BLOB_MAX_SIZE);
+            }
         }
 
         // 记录流量（来自网络）
