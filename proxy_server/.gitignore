@@ -1,0 +1,5 @@
+# 缓存文件
+cache-persist.json
+traffic.log
+tracking.log
+debug.log
