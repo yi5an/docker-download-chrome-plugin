@@ -543,7 +543,10 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
   try {
     console.log(`[Download] Downloading layer ${shortDigest}...`);
     console.log(`[Download] Token length: ${token.length}`);
-    return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${token}` } }, 'arrayBuffer', timeout, false);
+    return await proxyFetch(url, { headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.docker.image.rootfs.diff.tar.gzip,application/vnd.docker.image.rootfs.diff.tar,application/vnd.docker.image.rootfs.undefined,application/vnd.oci.image.manifest.v1+json'
+    } }, 'arrayBuffer', timeout, false);
   } catch (err) {
     // 如果是认证错误（401），尝试刷新 token 后重试，并跳过缓存
     if (err.isAuthError || (err.message && (err.message.includes('401') || err.message.includes('UNAUTHORIZED')))) {
@@ -555,7 +558,10 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
       // 使用新 token 重试，并跳过代理服务器缓存
       console.log(`[Download] Retrying layer ${shortDigest} with new token (skip cache)...`);
       try {
-        return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${newToken}` } }, 'arrayBuffer', timeout, true);
+        return await proxyFetch(url, { headers: {
+          'Authorization': `Bearer ${newToken}`,
+          'Accept': 'application/vnd.docker.image.rootfs.diff.tar.gzip,application/vnd.docker.image.rootfs.diff.tar,application/vnd.docker.image.rootfs.undefined,application/vnd.oci.image.manifest.v1+json'
+        } }, 'arrayBuffer', timeout, true);
       } catch (retryErr) {
         console.error(`[Download] Retry failed for layer ${shortDigest}:`, retryErr.message);
         throw retryErr;
