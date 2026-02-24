@@ -227,7 +227,8 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   }
 
   // 定义尝试顺序
-  const strategies = useProxy ? ['proxy', 'direct'] : ['direct', 'proxy'];
+  // 对于 Docker Registry，只尝试代理，不尝试直连（避免 CORS 问题）
+  const strategies = (isDockerRegistry || isCloudflareRegistry) ? ['proxy'] : (useProxy ? ['proxy', 'direct'] : ['direct', 'proxy']);
   const errors = [];
 
   // 如果需要跳过缓存，通过 HTTP header 通知代理服务器
