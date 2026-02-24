@@ -159,12 +159,26 @@
 </head>
 <body>
   <h1>Docker镜像下载器</h1>
-  
+
+  <!-- Docker Hub 认证配置 -->
+  <div style="background: #fff2f0; border: 1px solid #ffccc7; border-radius: 4px; padding: 12px; margin-bottom: 16px;">
+    <h2 style="margin: 0 0 8px; font-size: 14px;">Docker Hub 认证</h2>
+    <p style="margin: 0 0 8px; font-size: 12px; color: #666;">用于下载私有镜像（如 mcp/playwright）</p>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <input type="text" id="docker-username" placeholder="Docker Hub 用户名或访问令牌"
+             style="width: 100%; padding: 6px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px;">
+      <input type="password" id="docker-password" placeholder="密码或访问令牌"
+             style="width: 100%; padding: 6px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px;">
+      <button id="save-auth-btn" style="background: #1890ff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">保存认证信息</button>
+    </div>
+    <div id="auth-status" style="margin-top: 8px; font-size: 12px;"></div>
+  </div>
+
   <div id="active-tasks" class="task-list">
     <h2>活动任务</h2>
     <div id="active-tasks-container"></div>
   </div>
-  
+
   <div id="history-tasks" class="task-list">
     <h2>历史记录</h2>
     <div id="history-tasks-container"></div>

@@ -10,16 +10,37 @@
  * @returns {Promise<object>} manifest对象
  */
 async function fetchManifest(image, tag, arch = 'amd64') {
-  // 获取token
-  const token = await getDockerToken(image);
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+
+  // 先尝试使用认证（如果是私有镜像）
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+  const token = await getDockerToken(image, useAuth);
+
   // 获取manifest（可能是manifest list）
   const manifestUrl = `https://registry-1.docker.io/v2/${image}/manifests/${tag}`;
-  let resp = await fetch(manifestUrl, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
-    }
-  });
+
+  // 如果获取manifest失败且配置了认证，尝试不使用认证（可能是公开镜像）
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
+  };
+
+  let resp = await fetch(manifestUrl, { headers });
+
+  // 如果401且配置了认证，可能镜像实际上是公开的，尝试不使用认证
+  if (!resp.ok && resp.status === 401 && useAuth) {
+    console.log('[Manifest] 认证失败，尝试不使用认证...');
+    const publicToken = await getDockerToken(image, false);
+    resp = await fetch(manifestUrl, {
+      headers: {
+        'Authorization': `Bearer ${publicToken}`,
+        'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
+      }
+    });
+  }
   if (!resp.ok) throw new Error('获取manifest失败');
   const contentType = resp.headers.get('Content-Type');
   const manifest = await resp.json();
@@ -46,14 +67,71 @@ async function fetchManifest(image, tag, arch = 'amd64') {
 /**
  * 获取 DockerHub 镜像下载token
  * @param {string} image 镜像名
+ * @param {boolean} useAuth - 是否使用Docker Hub认证
  * @returns {Promise<string>} token
  */
-async function getDockerToken(image) {
-  const url = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image}:pull`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error('获取token失败');
-  const data = await resp.json();
-  return data.token;
+async function getDockerToken(image, useAuth = false) {
+  // 对于私有镜像，尝试更广的scope
+  const scopes = [
+    `repository:${image}:pull`,
+    `repository:${image}:pull,push`,
+    `repository:${image}:*,pull`
+  ];
+
+  // 如果配置了认证信息，使用Docker Hub认证
+  let authHeaders = {};
+  if (useAuth) {
+    // 从storage获取认证信息（需要在调用前确保已配置）
+    const auth = await new Promise((resolve) => {
+      chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+    });
+
+    if (auth.dockerUsername && auth.dockerPassword) {
+      console.log(`[Token] 使用Docker Hub认证用户: ${auth.dockerUsername}`);
+
+      // 使用Basic Auth进行Docker Hub认证
+      const credentials = btoa(`${auth.dockerUsername}:${auth.dockerPassword}`);
+      authHeaders.Authorization = `Basic ${credentials}`;
+
+      // 也可以尝试使用Docker Hub的OAuth
+      // authHeaders.Authorization = `Bearer ${auth.dockerPassword}`;
+    }
+  }
+
+  let lastError;
+
+  // 尝试不同的scope，直到成功
+  for (const scope of scopes) {
+    const url = `https://auth.docker.io/token?service=registry.docker.io&scope=${scope}`;
+    console.log(`[Token] 尝试获取token，scope: ${scope}`);
+
+    try {
+      const resp = await fetch(url, {
+        headers: authHeaders
+      });
+
+      if (!resp.ok) {
+        console.log(`[Token] 失败: ${resp.status} ${resp.statusText}`);
+        // 如果401且配置了认证，尝试不使用认证（可能镜像是公开的）
+        if (resp.status === 401 && useAuth) {
+          console.log(`[Token] 认证失败，尝试不使用认证...`);
+          return getDockerToken(image, false);
+        }
+        continue;
+      }
+
+      const data = await resp.json();
+      console.log(`[Token] 成功获取token，有效期: ${data.expires_in || 'unknown'}秒`);
+      console.log(`[Token] Token前缀: ${data.token.substring(0, 20)}...`);
+      return data.token;
+    } catch (err) {
+      console.log(`[Token] 请求失败: ${err.message}`);
+      lastError = err;
+    }
+  }
+
+  // 所有scope都尝试失败
+  throw new Error(`获取token失败，已尝试所有scope。最后错误: ${lastError?.message || '未知错误'}`);
 }
 
 /**
@@ -67,29 +145,74 @@ async function getDockerToken(image) {
 async function downloadLayers(image, layers, token, progressCallback = () => {}) {
   const results = [];
   let parentId = ''; // 用于生成layer ID
-  
+
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+
   for (let i = 0; i < layers.length; i++) {
     const layer = layers[i];
     const digest = layer.digest;
     const shortDigest = digest.substring(7, 19); // 截取digest的一部分用于显示
-    
+
     // 生成layer ID（与Python版本相同的算法）
     const layerId = await sha256Hash(`${parentId}\n${digest}\n`);
     parentId = layerId; // 更新parentId用于下一层
-    
+
     try {
       // 更新状态为开始下载
       progressCallback(digest, 0, 'downloading');
-      
+
       // 获取文件大小
       const url = `https://registry-1.docker.io/v2/${image}/blobs/${digest}`;
-      const headResp = await fetch(url, {
+
+      // 带重试机制的下载函数
+      let currentToken = token;
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      const downloadWithRetry = async (fetchUrl, fetchOptions) => {
+        try {
+          const resp = await fetch(fetchUrl, fetchOptions);
+
+          // 如果是401错误，尝试重新获取token并重试
+          if (resp.status === 401 && retryCount < maxRetries) {
+            console.log(`[Layer] 401错误，尝试重新获取token... (尝试 ${retryCount + 1}/${maxRetries})`);
+            retryCount++;
+
+            // 如果配置了认证，先尝试用认证的token
+            if (useAuth) {
+              currentToken = await getDockerToken(image, true);
+            } else {
+              currentToken = await getDockerToken(image, false);
+            }
+
+            // 使用新token重试
+            const newFetchOptions = { ...fetchOptions, headers: { ...fetchOptions.headers, 'Authorization': `Bearer ${currentToken}` } };
+            return fetch(fetchUrl, newFetchOptions);
+          }
+
+          return resp;
+        } catch (err) {
+          // 如果是网络错误，也尝试重试
+          if (retryCount < maxRetries && (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT')) {
+            console.log(`[Layer] 网络错误，重试... (尝试 ${retryCount + 1}/${maxRetries})`);
+            retryCount++;
+            return downloadWithRetry(fetchUrl, fetchOptions);
+          }
+          throw err;
+        }
+      };
+
+      const headResp = await downloadWithRetry(url, {
         method: 'HEAD',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${currentToken}` }
       });
-      
+
       if (!headResp.ok) {
-        throw new Error(`获取layer信息失败: ${digest}`);
+        throw new Error(`获取layer信息失败: ${digest} (${headResp.status})`);
       }
       
       const contentLength = parseInt(headResp.headers.get('Content-Length') || '0');
@@ -100,9 +223,11 @@ async function downloadLayers(image, layers, token, progressCallback = () => {})
       // 分片下载
       for (let start = 0; start < contentLength; start += chunkSize) {
         const end = Math.min(start + chunkSize - 1, contentLength - 1);
-        const rangeResp = await fetch(url, {
+
+        // 使用重试机制下载分片
+        const rangeResp = await downloadWithRetry(url, {
           headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${currentToken}`,
             'Range': `bytes=${start}-${end}`
           }
         });

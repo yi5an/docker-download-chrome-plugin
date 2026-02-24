@@ -83,11 +83,32 @@ class LRUCache {
         this.misses = 0;
     }
 
+    // 检查缓存项是否过期
+    isExpired(key, value) {
+        // Token 缓存项不使用过期时间，但我们应该定期清理
+        // 对于非 token 缓存项，检查是否超过 30 分钟
+        if (!key.includes('auth.docker.io/token')) {
+            const age = Date.now() - (value.timestamp || Date.now());
+            const maxAge = 30 * 60 * 1000; // 30 分钟
+            return age > maxAge;
+        }
+        return false;
+    }
+
     get(key) {
         if (this.cache.has(key)) {
+            const value = this.cache.get(key);
+
+            // 检查缓存项是否过期
+            if (this.isExpired(key, value)) {
+                console.log(`[Cache] EXPIRED for key: ${key}, removing...`);
+                this.cache.delete(key);
+                this.misses++;
+                return null;
+            }
+
             this.hits++;
             // LRU: 移到最后
-            const value = this.cache.get(key);
             this.cache.delete(key);
             this.cache.set(key, value);
             return value;

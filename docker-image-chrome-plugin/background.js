@@ -24,15 +24,21 @@ async function getCachedDockerToken(image, forceRefresh = false) {
   const now = Date.now();
   const cached = tokenCache.get(image);
 
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+
   // 如果缓存存在且未过期，直接返回
   if (!forceRefresh && cached && cached.expiresAt > now) {
     console.log(`[Token] Using cached token for ${image}, expires in ${Math.round((cached.expiresAt - now) / 1000)}s`);
     return cached.token;
   }
 
-  // 获取新 token
+  // 获取新 token（考虑是否使用认证）
   console.log(`[Token] Fetching new token for ${image} (forceRefresh: ${forceRefresh})`);
-  const token = await getDockerToken(image);
+  const token = await getDockerToken(image, useAuth);
 
   // 缓存 token
   tokenCache.set(image, {
@@ -51,6 +57,13 @@ async function getCachedDockerToken(image, forceRefresh = false) {
  */
 async function refreshToken(image) {
   console.log(`[Token] Refreshing token for ${image}`);
+
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+
   return await getCachedDockerToken(image, true);
 }
 
@@ -321,16 +334,60 @@ function findTask(image, tag, arch) {
   return tasks.find(t => taskKey(t.image, t.tag, t.arch) === taskKey(image, tag, arch));
 }
 
-async function getDockerToken(image) {
-  const url = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image}:pull`;
-  console.log(`[getDockerToken] Fetching token for image: ${image}`);
-  console.log(`[getDockerToken] Token URL: ${url.replace(image, '***')}`); // 隐藏镜像名
-  const data = await proxyFetch(url, {}, 'json');
-  if (!data || !data.token) {
-    throw new Error(`Failed to get token for image: ${image}. Response: ${JSON.stringify(data)}`);
+async function getDockerToken(image, useAuth = false) {
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+
+  const hasAuth = !!(auth.dockerUsername && auth.dockerPassword);
+
+  // 如果配置了认证且请求使用认证，使用Basic Auth
+  const headers = {};
+  if (useAuth && hasAuth) {
+    console.log(`[getDockerToken] Using Docker Hub auth for user: ${auth.dockerUsername}`);
+    const credentials = btoa(`${auth.dockerUsername}:${auth.dockerPassword}`);
+    headers['Authorization'] = `Basic ${credentials}`;
   }
-  console.log(`[getDockerToken] Token fetched successfully`);
-  return data.token;
+
+  // 尝试不同的scope
+  const scopes = [
+    `repository:${image}:pull`,
+    `repository:${image}:pull,push`,
+    `repository:${image}:*,pull`
+  ];
+
+  let lastError;
+
+  for (const scope of scopes) {
+    const url = `https://auth.docker.io/token?service=registry.docker.io&scope=${scope}`;
+    console.log(`[getDockerToken] Fetching token for image: ${image}, scope: ${scope}`);
+    console.log(`[getDockerToken] Token URL: ${url.replace(image, '***')}`);
+
+    try {
+      const data = await proxyFetch(url, { headers }, 'json');
+
+      if (!data || !data.token) {
+        console.log(`[getDockerToken] No token in response for scope: ${scope}`);
+        continue;
+      }
+
+      console.log(`[getDockerToken] Token fetched successfully, expires_in: ${data.expires_in || 'unknown'}s`);
+      console.log(`[getDockerToken] Token prefix: ${data.token.substring(0, 20)}...`);
+      return data.token;
+    } catch (err) {
+      console.log(`[getDockerToken] Failed for scope ${scope}: ${err.message}`);
+      lastError = err;
+
+      // 如果401且配置了认证，尝试不使用认证（可能镜像是公开的）
+      if (err.isAuthError && useAuth) {
+        console.log(`[getDockerToken] Auth failed, trying without auth...`);
+        return getDockerToken(image, false);
+      }
+    }
+  }
+
+  throw new Error(`Failed to get token for image: ${image}. Last error: ${lastError?.message || 'unknown'}`);
 }
 
 /**
@@ -391,14 +448,35 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
   arch = normalizeArchitecture(arch);
   console.log(`[fetchManifest] Normalized architecture: ${arch}`);
 
-  const token = await getDockerToken(image);
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+  const token = await getDockerToken(image, useAuth);
+
   let url = `https://registry-1.docker.io/v2/${image}/manifests/${tagOrDigest}`;
+
+  // 尝试获取manifest
   let manifest = await proxyFetch(url, {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
     }
   }, 'json');
+
+  // 如果401且配置了认证，可能镜像是公开的，尝试不使用认证
+  if (manifest && manifest.error && manifest.error.toLowerCase().includes('unauthorized') && useAuth) {
+    console.log('[fetchManifest] Auth failed, trying without auth...');
+    const publicToken = await getDockerToken(image, false);
+    manifest = await proxyFetch(url, {
+      headers: {
+        'Authorization': `Bearer ${publicToken}`,
+        'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
+      }
+    }, 'json');
+  }
   let tryCount = 0;
   while (!manifest.layers && manifest.manifests && tryCount < 5) {
     // 使用更灵活的匹配逻辑
@@ -455,6 +533,12 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
   const timeout = 300000; // 大文件下载使用 5 分钟超时
   const shortDigest = layer.digest.substring(7, 19);
 
+  // 检查是否配置了Docker Hub认证
+  const auth = await new Promise((resolve) => {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
+  });
+  const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
+
   // 第一次尝试
   try {
     console.log(`[Download] Downloading layer ${shortDigest}...`);
@@ -465,8 +549,8 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
     if (err.isAuthError || (err.message && (err.message.includes('401') || err.message.includes('UNAUTHORIZED')))) {
       console.log(`[Download] Got 401 for layer ${shortDigest}, refreshing token and skipping cache...`);
 
-      // 刷新 token
-      const newToken = await refreshToken(image);
+      // 刷新 token（考虑是否使用认证）
+      const newToken = await getDockerToken(image, useAuth);
 
       // 使用新 token 重试，并跳过代理服务器缓存
       console.log(`[Download] Retrying layer ${shortDigest} with new token (skip cache)...`);

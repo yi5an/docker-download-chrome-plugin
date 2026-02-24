@@ -3,11 +3,76 @@ document.addEventListener('DOMContentLoaded', function () {
   const activeTasksContainer = document.getElementById('active-tasks-container');
   const historyTasksContainer = document.getElementById('history-tasks-container');
 
+  // 加载Docker Hub认证信息
+  loadDockerAuth();
+
   // 初始加载任务
   loadTasks();
 
   // 每秒更新一次任务状态
   setInterval(loadTasks, 1000);
+
+  // 保存认证信息按钮事件
+  const saveAuthBtn = document.getElementById('save-auth-btn');
+  if (saveAuthBtn) {
+    saveAuthBtn.addEventListener('click', saveDockerAuth);
+  }
+
+  // 加载Docker Hub认证信息
+  function loadDockerAuth() {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], function(result) {
+      const usernameInput = document.getElementById('docker-username');
+      const passwordInput = document.getElementById('docker-password');
+      const authStatus = document.getElementById('auth-status');
+
+      if (result.dockerUsername) {
+        usernameInput.value = result.dockerUsername;
+      }
+      if (result.dockerPassword) {
+        passwordInput.value = result.dockerPassword;
+      }
+
+      // 显示认证状态
+      if (result.dockerUsername) {
+        authStatus.textContent = `已配置: ${result.dockerUsername}`;
+        authStatus.style.color = '#52c41a';
+      } else {
+        authStatus.textContent = '未配置（下载私有镜像时需要）';
+        authStatus.style.color = '#f5222d';
+      }
+    });
+  }
+
+  // 保存认证信息
+  function saveDockerAuth() {
+    const usernameInput = document.getElementById('docker-username');
+    const passwordInput = document.getElementById('docker-password');
+    const authStatus = document.getElementById('auth-status');
+
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    if (!username || !password) {
+      authStatus.textContent = '请填写用户名和密码';
+      authStatus.style.color = '#f5222d';
+      return;
+    }
+
+    chrome.storage.local.set(
+      { dockerUsername: username, dockerPassword: password },
+      function() {
+        if (chrome.runtime.lastError) {
+          authStatus.textContent = '保存失败: ' + chrome.runtime.lastError.message;
+          authStatus.style.color = '#f5222d';
+        } else {
+          authStatus.textContent = `已保存: ${username}`;
+          authStatus.style.color = '#52c41a';
+          // 清空密码框
+          passwordInput.value = '';
+        }
+      }
+    );
+  }
 
   // 加载任务函数
   function loadTasks() {
