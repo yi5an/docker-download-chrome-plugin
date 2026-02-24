@@ -380,6 +380,13 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    // 处理 OPTIONS 预检请求
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+    }
     next();
 });
 
@@ -456,8 +463,11 @@ app.get('/proxy', async (req, res) => {
                     bufferType: cached.data.constructor.name
                 });
 
-                // 设置所有响应头
+                // 设置所有响应头（确保 CORS 头存在）
                 res.status(200);
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+                res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
                 res.setHeader('X-Cache', 'HIT');
                 if (cached.contentType) res.setHeader('Content-Type', cached.contentType);
                 res.setHeader('Content-Length', cached.data.length);
@@ -562,11 +572,16 @@ app.get('/proxy', async (req, res) => {
             bufferType: buffer.constructor.name
         });
 
-        // 设置所有响应头
+        // 设置所有响应头（确保 CORS 头存在）
         res.status(resp.status);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
         res.setHeader('X-Cache', 'MISS');
         if (contentType) res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', buffer.length);
+
+        console.log('[proxy] 响应头已设置，准备发送数据');
 
         // 写入并结束响应
         res.write(buffer);
