@@ -200,12 +200,30 @@ app.use((req, res, next) => {
 });
 
 // ==================== 代理 GET 请求（带缓存） ====================
+const crypto = require('crypto');
+
+// 生成 Authorization header 的短哈希，用于缓存键
+function getAuthHash(authHeader) {
+    if (!authHeader) return 'no-auth';
+    // 只取 token 的前 16 个字符作为标识，避免完整的 token 作为缓存键
+    const token = authHeader.replace('Bearer ', '');
+    return crypto.createHash('md5').update(token).digest('hex').substring(0, 8);
+}
+
 app.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url;
+    const skipCache = req.query._nocache || req.headers['x-skip-cache'] === 'true';
     const startTime = Date.now();
+
+    // 检查是否是 blob 下载请求（layer 文件）
+    const isBlobRequest = targetUrl && targetUrl.includes('/blobs/');
+    // 检查是否是 manifest 请求
+    const isManifestRequest = targetUrl && targetUrl.includes('/manifests/');
 
     console.log('[proxy] 原始请求:', req.originalUrl);
     console.log('[proxy] 解析目标:', targetUrl);
+    console.log('[proxy] 跳过缓存:', skipCache ? '是' : '否');
+    console.log('[proxy] 请求类型:', isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'));
     logToFile(`[Request] Original: ${req.originalUrl}`);
     logToFile(`[Request] Target: ${targetUrl}`);
 
@@ -215,32 +233,44 @@ app.get('/proxy', async (req, res) => {
     }
 
     try {
-        // 白名单检查
-        if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(targetUrl)) {
+        // 白名单检查（移除 _nocache 参数后再检查）
+        const urlForCheck = targetUrl.replace(/[?&]_nocache=\d+/, '');
+        if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(urlForCheck)) {
             console.error('[proxy] 非法目标:', targetUrl);
             return res.status(403).send('Forbidden');
         }
 
-        // 构建缓存键（包含 URL 和重要的请求头）
-        const cacheKey = targetUrl;
+        // 构建缓存键（包含 URL 和 Authorization header 的哈希）
+        // 这样不同 token 的请求会有不同的缓存，避免 token 过期导致的 401 缓存问题
+        const authHash = getAuthHash(req.headers['authorization']);
+        const cacheKey = `${targetUrl}#${authHash}`;
 
-        // 检查缓存
-        const cached = responseCache.get(cacheKey);
-        if (cached) {
-            console.log('[Cache] HIT for:', targetUrl);
-            logToFile(`[Cache] HIT: ${targetUrl}`);
+        console.log('[proxy] 缓存键 (auth hash):', authHash);
 
-            // 记录流量（来自缓存）
-            recordTraffic(targetUrl, cached.size, true);
+        // 检查缓存（如果需要跳过缓存则不检查）
+        // 注意：blob 请求不使用缓存（文件太大，且可能有问题）
+        if (!skipCache && !isBlobRequest) {
+            const cached = responseCache.get(cacheKey);
+            if (cached) {
+                console.log('[Cache] HIT for:', targetUrl, 'auth:', authHash);
+                logToFile(`[Cache] HIT: ${targetUrl}`);
 
-            // 设置响应头
-            res.status(200);
-            res.set('X-Cache', 'HIT');
-            res.set('Content-Type', cached.contentType);
-            res.set('Content-Length', cached.data.length);
+                // 记录流量（来自缓存）
+                recordTraffic(targetUrl, cached.size, true);
 
-            // 发送缓存的数据
-            return res.send(cached.data);
+                // 设置响应头
+                res.status(200);
+                res.set('X-Cache', 'HIT');
+                res.set('Content-Type', cached.contentType);
+                res.set('Content-Length', cached.data.length);
+
+                // 发送缓存的数据
+                return res.send(cached.data);
+            }
+        } else if (isBlobRequest) {
+            console.log('[Cache] SKIPPED (blob request, too large)');
+        } else {
+            console.log('[Cache] SKIPPED for:', targetUrl);
         }
 
         console.log('[Cache] MISS for:', targetUrl);
@@ -270,15 +300,23 @@ app.get('/proxy', async (req, res) => {
         // 读取响应数据
         const buffer = await resp.buffer();
 
-        // 只缓存成功的响应
-        if (resp.status === 200 && buffer.length < 50 * 1024 * 1024) { // 限制：小于50MB才缓存
+        // 缓存策略：
+        // 1. 只缓存成功的响应（status === 200）
+        // 2. 不缓存 blob 请求（文件太大）
+        // 3. 不缓存过大的响应（限制 50MB）
+        // 4. 缓存键包含 auth hash，避免 token 问题
+        if (resp.status === 200 && !isBlobRequest && buffer.length < 50 * 1024 * 1024) {
             responseCache.set(cacheKey, {
                 data: buffer,
                 contentType: contentType,
                 status: resp.status
             }, buffer.length);
 
-            console.log('[Cache] Cached:', targetUrl, 'size:', buffer.length);
+            console.log('[Cache] Cached:', targetUrl, 'auth:', authHash, 'size:', buffer.length);
+        } else if (resp.status !== 200) {
+            console.log('[Cache] NOT cached (non-200 response):', resp.status);
+        } else if (isBlobRequest) {
+            console.log('[Cache] NOT cached (blob request)');
         }
 
         // 记录流量（来自网络）

@@ -7,6 +7,100 @@ let tasks = [];
 let history = [];
 let isChinaIP = null;
 
+// ==================== Token 缓存机制 ====================
+// Docker Registry token 通常只有 5 分钟有效期
+// 需要缓存并在过期前自动刷新
+
+const tokenCache = new Map(); // image -> { token, expiresAt }
+const TOKEN_EXPIRY_MS = 4 * 60 * 1000; // 4 分钟（留 1 分钟缓冲）
+
+/**
+ * 获取 Docker Token（带缓存和自动刷新）
+ * @param {string} image 镜像名
+ * @param {boolean} forceRefresh 是否强制刷新
+ * @returns {Promise<string>} token
+ */
+async function getCachedDockerToken(image, forceRefresh = false) {
+  const now = Date.now();
+  const cached = tokenCache.get(image);
+
+  // 如果缓存存在且未过期，直接返回
+  if (!forceRefresh && cached && cached.expiresAt > now) {
+    console.log(`[Token] Using cached token for ${image}, expires in ${Math.round((cached.expiresAt - now) / 1000)}s`);
+    return cached.token;
+  }
+
+  // 获取新 token
+  console.log(`[Token] Fetching new token for ${image} (forceRefresh: ${forceRefresh})`);
+  const token = await getDockerToken(image);
+
+  // 缓存 token
+  tokenCache.set(image, {
+    token,
+    expiresAt: now + TOKEN_EXPIRY_MS
+  });
+
+  console.log(`[Token] Token cached for ${image}, will expire in ${TOKEN_EXPIRY_MS / 1000}s`);
+  return token;
+}
+
+/**
+ * 刷新指定镜像的 token
+ * @param {string} image 镜像名
+ * @returns {Promise<string>} 新 token
+ */
+async function refreshToken(image) {
+  console.log(`[Token] Refreshing token for ${image}`);
+  return await getCachedDockerToken(image, true);
+}
+
+// ==================== Service Worker 保活机制 ====================
+// Chrome Manifest V3 的 Service Worker 会在空闲约 30 秒后终止
+// 需要通过定期心跳来保持活跃
+
+let keepAliveInterval = null;
+let activeDownloadCount = 0;
+
+/**
+ * 启动保活机制
+ * 在下载任务进行期间定期发送心跳，防止 Service Worker 被终止
+ */
+function startKeepAlive() {
+  activeDownloadCount++;
+  if (keepAliveInterval) return; // 已经在运行
+
+  // 每 20 秒发送一次心跳（小于 30 秒的 Service Worker 超时时间）
+  keepAliveInterval = setInterval(() => {
+    // 使用 chrome.alarms 或简单的 storage 操作来保持活跃
+    chrome.storage.local.get('__keepalive__', () => {
+      // 忽略结果，只是为了触发 Service Worker 活动
+      console.log('[KeepAlive] Heartbeat sent, active downloads:', activeDownloadCount);
+    });
+  }, 20000);
+
+  console.log('[KeepAlive] Started, active downloads:', activeDownloadCount);
+}
+
+/**
+ * 停止保活机制
+ * 当所有下载任务完成时调用
+ */
+function stopKeepAlive() {
+  activeDownloadCount--;
+  if (activeDownloadCount <= 0) {
+    activeDownloadCount = 0;
+    if (keepAliveInterval) {
+      clearInterval(keepAliveInterval);
+      keepAliveInterval = null;
+      console.log('[KeepAlive] Stopped');
+    }
+  }
+}
+
+// ==================== 超时控制配置 ====================
+const FETCH_TIMEOUT = 120000; // 单次请求超时：120 秒
+const CHUNK_TIMEOUT = 60000;  // 分片下载超时：60 秒
+
 /**
  * 检测是否需要使用代理（仅限中国出口IP）
  */
@@ -49,15 +143,60 @@ async function reportDownload(image, tag, arch) {
 
 /**
  * 解析响应数据
+ * @throws {Error} 如果响应包含 Docker Registry 错误（如 UNAUTHORIZED），抛出带状态的错误
  */
 async function parseResponse(resp, responseType) {
-  if (responseType === 'json') return await resp.json();
+  if (responseType === 'json') {
+    const data = await resp.json();
+    // 检查是否是 Docker Registry 错误响应
+    if (data && data.errors && Array.isArray(data.errors)) {
+      const errorMsg = data.errors.map(e => e.message || e.code).join(', ');
+      const hasAuthError = data.errors.some(e => e.code === 'UNAUTHORIZED');
+      if (hasAuthError) {
+        const error = new Error(`401 UNAUTHORIZED: ${errorMsg}`);
+        error.status = 401;
+        error.isAuthError = true;
+        throw error;
+      }
+    }
+    return data;
+  }
   if (responseType === 'arrayBuffer') return await resp.arrayBuffer();
   return await resp.text();
 }
 
+/**
+ * 带超时控制的 fetch
+ * @param {string} url 请求 URL
+ * @param {Object} options fetch 选项
+ * @param {number} timeout 超时时间（毫秒）
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    console.warn(`[Fetch] Request timeout after ${timeout}ms: ${url.substring(0, 100)}...`);
+  }, timeout);
+
+  try {
+    const resp = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return resp;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error(`请求超时 (${timeout / 1000}秒)`);
+    }
+    throw err;
+  }
+}
+
 // 代理fetch通过中转服务器（Docker Registry 必须走代理以避免 CORS）
-async function proxyFetch(url, options = {}, responseType = 'json') {
+async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false) {
   // Docker Registry 相关请求必须走代理（避免 Cloudflare R2 的 CORS 问题）
   const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod/.test(url);
 
@@ -70,44 +209,72 @@ async function proxyFetch(url, options = {}, responseType = 'json') {
   const strategies = useProxy ? ['proxy', 'direct'] : ['direct', 'proxy'];
   const errors = [];
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}`);
+  // 如果需要跳过缓存，在 URL 中添加 nocache 参数
+  // 代理服务器会识别这个参数并跳过缓存
+  let proxyUrl = url;
+  if (skipCache && useProxy) {
+    const nocacheParam = `_nocache=${Date.now()}`;
+    proxyUrl = url.includes('?') ? `${url}&${nocacheParam}` : `${url}?${nocacheParam}`;
+  }
+
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}`);
 
   for (const strategy of strategies) {
     try {
       if (strategy === 'proxy') {
-        const proxyUrl = DEFAULT_PROXY_BASE + encodeURIComponent(url);
-        console.log(`[ProxyFetch] Attempting PROXY: ${proxyUrl}`);
-        const resp = await fetch(proxyUrl, options);
+        // 使用带 nocache 参数的 URL（如果需要跳过缓存）
+        const actualProxyUrl = DEFAULT_PROXY_BASE + encodeURIComponent(proxyUrl);
+        console.log(`[ProxyFetch] Attempting PROXY: ${actualProxyUrl}`);
+        const resp = await fetchWithTimeout(actualProxyUrl, options, timeout);
 
         if (resp.ok) {
           console.log('[ProxyFetch] PROXY success');
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
+          // 检查是否是认证错误
+          if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
+            const error = new Error(`401 UNAUTHORIZED: ${errText}`);
+            error.status = 401;
+            error.isAuthError = true;
+            throw error;
+          }
           throw new Error(`${resp.status} ${errText}`);
         }
       } else { // direct
         console.log(`[ProxyFetch] Attempting DIRECT: ${url}`);
-        const resp = await fetch(url, options);
+        const resp = await fetchWithTimeout(url, options, timeout);
 
         if (resp.ok) {
           console.log('[ProxyFetch] DIRECT success');
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
+          // 检查是否是认证错误
+          if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
+            const error = new Error(`401 UNAUTHORIZED: ${errText}`);
+            error.status = 401;
+            error.isAuthError = true;
+            throw error;
+          }
           throw new Error(`${resp.status} ${errText}`);
         }
       }
     } catch (err) {
       console.warn(`[ProxyFetch] ${strategy.toUpperCase()} failed: ${err.message}`);
+      // 如果是认证错误，立即抛出，不尝试其他策略
+      if (err.isAuthError) {
+        console.error(`[ProxyFetch] Authentication error, not retrying with other strategy`);
+        throw err;
+      }
       errors.push(`${strategy.toUpperCase()}: ${err.message}`);
     }
   }
 
   // 若所有策略都失败
-  const finalError = `All strategies failed. Details: [ ${errors.join(' | ')} ]`;
-  console.error(`[ProxyFetch] ${finalError}`);
-  throw new Error(finalError);
+  const finalError = new Error(`All strategies failed. Details: [ ${errors.join(' | ')} ]`);
+  console.error(`[ProxyFetch] ${finalError.message}`);
+  throw finalError;
 }
 
 // 加载历史
@@ -271,20 +438,52 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
 }
 
 /**
- * 下载单个layer（支持分片下载和进度回调）
+ * 下载单个layer（支持自动刷新 token 和重试）
  * @param {string} image 镜像名称
  * @param {Object} layer layer对象
- * @param {string} token 认证token
+ * @param {string} token 认证token（可能过期，会自动刷新）
  * @param {Function} progressCallback 进度回调函数
  * @returns {Promise<ArrayBuffer>} layer的二进制数据
  */
 async function downloadSingleLayer(image, layer, token, progressCallback) {
   const url = `https://registry-1.docker.io/v2/${image}/blobs/${layer.digest}`;
-  return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${token}` } }, 'arrayBuffer');
+  const timeout = 300000; // 大文件下载使用 5 分钟超时
+  const shortDigest = layer.digest.substring(7, 19);
+
+  // 第一次尝试
+  try {
+    console.log(`[Download] Downloading layer ${shortDigest}...`);
+    return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${token}` } }, 'arrayBuffer', timeout, false);
+  } catch (err) {
+    // 如果是认证错误（401），尝试刷新 token 后重试，并跳过缓存
+    if (err.isAuthError || (err.message && (err.message.includes('401') || err.message.includes('UNAUTHORIZED')))) {
+      console.log(`[Download] Got 401 for layer ${shortDigest}, refreshing token and skipping cache...`);
+
+      // 刷新 token
+      const newToken = await refreshToken(image);
+
+      // 使用新 token 重试，并跳过代理服务器缓存
+      console.log(`[Download] Retrying layer ${shortDigest} with new token (skip cache)...`);
+      try {
+        return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${newToken}` } }, 'arrayBuffer', timeout, true);
+      } catch (retryErr) {
+        console.error(`[Download] Retry failed for layer ${shortDigest}:`, retryErr.message);
+        throw retryErr;
+      }
+    }
+
+    // 其他错误直接抛出
+    console.error(`[Download] Failed to download layer ${shortDigest}:`, err.message);
+    throw err;
+  }
 }
 
 async function runDownloadTask(task) {
   console.log('[Docker Download Plugin] Starting runDownloadTask for:', task.image, task.tag, task.arch);
+
+  // 启动保活机制，防止 Service Worker 被终止
+  startKeepAlive();
+
   task.status = 'downloading';
   task.finished = 0;
   task.running = 0;
@@ -297,7 +496,8 @@ async function runDownloadTask(task) {
     reportDownload(task.image, task.tag, task.arch);
 
     console.log('[Docker Download Plugin] Getting token for:', task.image);
-    const token = await getDockerToken(task.image);
+    // 使用缓存的 token 获取函数，会自动检查过期
+    let token = await getCachedDockerToken(task.image);
     const layersData = [];
     const downloadedLayers = [];
     let parentId = '';
@@ -328,6 +528,9 @@ async function runDownloadTask(task) {
       task.running = 1;
       syncTasks();
 
+      // 在下载每个 layer 前，检查 token 是否即将过期，主动刷新
+      token = await getCachedDockerToken(task.image);
+
       // 向content-script发送下载进度更新
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs && tabs[0]) {
@@ -344,7 +547,7 @@ async function runDownloadTask(task) {
 
       while (retryCount < maxRetries) {
         try {
-          // 下载单层
+          // 下载单层（内部会自动处理 401 并刷新 token）
           const buf = await downloadSingleLayer(task.image, task.layers[i], token);
 
           // 生成layer ID
@@ -493,6 +696,9 @@ async function runDownloadTask(task) {
     task.status = 'failed';
     task.errorMessage = err.message || '下载过程中发生未知错误';
     moveTaskToHistory(task);
+  } finally {
+    // 无论成功或失败，都要停止保活机制
+    stopKeepAlive();
   }
 }
 
