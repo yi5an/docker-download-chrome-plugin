@@ -458,6 +458,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
   // 第一次尝试
   try {
     console.log(`[Download] Downloading layer ${shortDigest}...`);
+    console.log(`[Download] Token length: ${token.length}`);
     return await proxyFetch(url, { headers: { 'Authorization': `Bearer ${token}` } }, 'arrayBuffer', timeout, false);
   } catch (err) {
     // 如果是认证错误（401），尝试刷新 token 后重试，并跳过缓存
@@ -509,6 +510,7 @@ async function runDownloadTask(task) {
 
     // 首先下载config文件
     console.log('[Docker Download Plugin] Downloading config file...');
+    console.log('[Docker Download Plugin] Config digest:', task.manifest.config.digest);
     try {
       const configBuf = await downloadSingleLayer(task.image, { digest: task.manifest.config.digest }, token);
       downloadedLayers.push({
@@ -535,6 +537,7 @@ async function runDownloadTask(task) {
 
       // 在下载每个 layer 前，检查 token 是否即将过期，主动刷新
       token = await getCachedDockerToken(task.image);
+      console.log('[Docker Download Plugin] Token refreshed before downloading layer:', task.layers[i].digest.substring(0, 16));
 
       // 向content-script发送下载进度更新
       chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {

@@ -284,6 +284,14 @@ app.get('/proxy', async (req, res) => {
         // 调试：打印收到的所有请求头
         console.log('[proxy] 收到的请求头:', JSON.stringify(req.headers, null, 2));
 
+        // 检查 Authorization header 的内容
+        const authHeader = req.headers['authorization'];
+        console.log('[proxy] Authorization header:', authHeader ? 'Present' : 'Missing');
+        if (authHeader) {
+          console.log('[proxy] Authorization type:', authHeader.split(' ')[0]);
+          console.log('[proxy] Token length:', authHeader.length);
+        }
+
         // 缓存未命中，发起实际请求
         const headers = {};
         // 注意：Express 会将 header 名称转为小写
