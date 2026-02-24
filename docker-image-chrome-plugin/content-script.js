@@ -159,7 +159,12 @@ function startDownloadTask({ image, tag, arch, layers }) {
     }))
   };
   window.dockerDownloadTasks.push(task);
-  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks });
+  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks }, function() {
+    // 忽略运行时错误（Service Worker 可能休眠）
+    if (chrome.runtime.lastError) {
+      console.log('[Docker Download] Task update message ignored:', chrome.runtime.lastError.message);
+    }
+  });
   syncTasksToStorage();
   return task;
 }
@@ -169,7 +174,12 @@ function updateLayerStatus(task, layerIndex, status) {
   task.finished = task.layers.filter(l => l.status === 'done').length;
   task.running = task.layers.filter(l => l.status === 'downloading').length;
   task.pending = task.layers.filter(l => l.status === 'pending').length;
-  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks });
+  chrome.runtime.sendMessage({ type: 'docker-download-tasks-update', tasks: window.dockerDownloadTasks }, function() {
+    // 忽略运行时错误（Service Worker 可能休眠）
+    if (chrome.runtime.lastError) {
+      console.log('[Docker Download] Task update message ignored:', chrome.runtime.lastError.message);
+    }
+  });
   syncTasksToStorage();
 }
 
@@ -521,16 +531,28 @@ async function downloadSingleLayer(image, layer, token) {
     btn.onclick = function (e) {
       e.stopPropagation();
       try {
-        chrome.runtime.sendMessage({ type: 'start-download', image, tag, arch });
-        btn.disabled = true;
-        btn.querySelector('path').setAttribute('fill', '#aaa');
-        btn.title = '已提交后台下载';
-        showNotification(`开始下载 ${image}:${tag} (${originalArch})，请在插件弹窗中查看进度`, 'success');
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
-          btn.querySelector('path').setAttribute('fill', '#333');
-        }, 2000);
+        // 使用回调函数处理响应，避免 "Receiving end does not exist" 错误
+        chrome.runtime.sendMessage({ type: 'start-download', image, tag, arch }, function(response) {
+          // 检查是否有运行时错误
+          if (chrome.runtime.lastError) {
+            console.error('[Docker Download] Runtime error:', chrome.runtime.lastError);
+            showNotification('插件后台连接失败，请刷新页面后重试！', 'error');
+            return;
+          }
+          if (response && response.ok) {
+            btn.disabled = true;
+            btn.querySelector('path').setAttribute('fill', '#aaa');
+            btn.title = '已提交后台下载';
+            showNotification(`开始下载 ${image}:${tag} (${originalArch})，请在插件弹窗中查看进度`, 'success');
+            setTimeout(() => {
+              btn.disabled = false;
+              btn.title = `下载该架构镜像（${tag}，${originalArch}）`;
+              btn.querySelector('path').setAttribute('fill', '#333');
+            }, 2000);
+          } else if (response && response.reason) {
+            showNotification(`下载失败: ${response.reason}`, 'error');
+          }
+        });
       } catch (err) {
         showNotification('插件后台已失效，请刷新页面或重新加载插件后重试！\n错误信息：' + (err && err.message ? err.message : err), 'error');
       }
