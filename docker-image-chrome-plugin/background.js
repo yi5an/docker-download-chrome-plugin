@@ -216,7 +216,7 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
 // 代理fetch通过中转服务器（Docker Registry 必须走代理以避免 CORS）
 async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false) {
   // Docker Registry 相关请求必须走代理（避免 Cloudflare R2 的 CORS 问题）
-  const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod\/.test(url);
+  const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod\//.test(url);
 
   // 添加 Cloudflare 相关域名匹配
   const isCloudflareRegistry = /production\.cloudflare\.docker\.com/.test(url);
