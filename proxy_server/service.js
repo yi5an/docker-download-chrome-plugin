@@ -276,13 +276,21 @@ app.get('/proxy', async (req, res) => {
         console.log('[Cache] MISS for:', targetUrl);
         logToFile(`[Cache] MISS: ${targetUrl}`);
 
+        // 调试：打印收到的所有请求头
+        console.log('[proxy] 收到的请求头:', JSON.stringify(req.headers, null, 2));
+
         // 缓存未命中，发起实际请求
         const headers = {};
-        if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
-        if (req.headers['accept']) headers['accept'] = req.headers['accept'];
+        // 注意：Express 会将 header 名称转为小写
+        if (req.headers['authorization']) {
+            headers['Authorization'] = req.headers['authorization'];
+        }
+        if (req.headers['accept']) {
+            headers['Accept'] = req.headers['accept'];
+        }
 
         const logHeaders = { ...headers };
-        if (logHeaders['authorization']) logHeaders['authorization'] = 'Bearer ******';
+        if (logHeaders['Authorization']) logHeaders['Authorization'] = 'Bearer ******';
         console.log('[proxy] 发起fetch:', targetUrl, logHeaders);
         console.log('[proxy] 使用代理:', USE_PROXY ? PROXY_URL : '直连');
 
