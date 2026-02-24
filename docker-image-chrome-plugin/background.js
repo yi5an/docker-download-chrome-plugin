@@ -547,6 +547,9 @@ async function runDownloadTask(task) {
 
       while (retryCount < maxRetries) {
         try {
+          // 每次重试前都获取最新的 token（可能是刷新后的）
+          token = await getCachedDockerToken(task.image);
+
           // 下载单层（内部会自动处理 401 并刷新 token）
           const buf = await downloadSingleLayer(task.image, task.layers[i], token);
 
@@ -570,7 +573,12 @@ async function runDownloadTask(task) {
           console.warn(`[Download] Layer ${i} failed (Attempt ${retryCount}/${maxRetries}): ${err.message}`);
 
           if (retryCount < maxRetries) {
-            // Optional: Update UI or wait briefly
+            // 如果是认证错误，强制刷新 token
+            if (err.isAuthError || (err.message && err.message.includes('401'))) {
+              console.log(`[Download] Forcing token refresh after 401 error...`);
+              token = await refreshToken(task.image);
+            }
+            // 等待后重试
             await new Promise(r => setTimeout(r, 1000 * retryCount)); // Exponential backoff-ish
           }
         }
