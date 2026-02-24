@@ -72,27 +72,95 @@ function recordTraffic(url, bytes, fromCache) {
     }
 }
 
-// ==================== LRU 缓存实现 ====================
+// ==================== LRU 缓存实现（支持持久化）====================
 class LRUCache {
-    constructor(maxSize = 100, maxBytes = 500 * 1024 * 1024) { // 默认100项或500MB
+    constructor(maxSize = 100, maxBytes = 500 * 1024 * 1024, persistPath = null) { // 默认100项或500MB
         this.maxSize = maxSize;
         this.maxBytes = maxBytes;
+        this.persistPath = persistPath;
         this.cache = new Map();
         this.currentBytes = 0;
         this.hits = 0;
         this.misses = 0;
+        this.pendingSave = false; // 防抖，避免频繁写入
+
+        // 如果指定了持久化路径，从文件加载缓存
+        if (this.persistPath) {
+            this.loadFromDisk();
+        }
+    }
+
+    // 从磁盘加载缓存
+    loadFromDisk() {
+        try {
+            if (!fs.existsSync(this.persistPath)) {
+                console.log(`[Cache] No cache file found, starting fresh`);
+                return;
+            }
+
+            const data = fs.readFileSync(this.persistPath, 'utf-8');
+            const entries = JSON.parse(data);
+
+            let totalBytes = 0;
+            let validCount = 0;
+            let expiredCount = 0;
+
+            for (const [key, value] of Object.entries(entries)) {
+                // 检查是否过期
+                if (this.isExpired(key, value)) {
+                    expiredCount++;
+                    continue;
+                }
+
+                this.cache.set(key, value);
+                totalBytes += value.size || 0;
+                validCount++;
+            }
+
+            this.currentBytes = totalBytes;
+            console.log(`[Cache] Loaded ${validCount} entries from disk (${expiredCount} expired), total: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+        } catch (err) {
+            console.error(`[Cache] Failed to load from disk:`, err);
+        }
+    }
+
+    // 保存缓存到磁盘
+    saveToDisk() {
+        if (!this.persistPath) return;
+
+        try {
+            const entries = {};
+            for (const [key, value] of this.cache.entries()) {
+                // 只保存必要数据，减少文件大小
+                entries[key] = {
+                    data: value.data,
+                    contentType: value.contentType,
+                    size: value.size,
+                    timestamp: value.timestamp,
+                    accessCount: value.accessCount || 0
+                };
+            }
+
+            const json = JSON.stringify(entries, null, 2);
+            fs.writeFileSync(this.persistPath, json, 'utf-8');
+            console.log(`[Cache] Saved ${this.cache.size} entries to disk, total: ${(this.currentBytes / 1024 / 1024).toFixed(2)} MB`);
+        } catch (err) {
+            console.error(`[Cache] Failed to save to disk:`, err);
+        }
     }
 
     // 检查缓存项是否过期
     isExpired(key, value) {
-        // Token 缓存项不使用过期时间，但我们应该定期清理
-        // 对于非 token 缓存项，检查是否超过 30 分钟
-        if (!key.includes('auth.docker.io/token')) {
+        // Token 缓存项不使用过期时间，但应该更频繁地检查
+        if (key.includes('auth.docker.io/token')) {
             const age = Date.now() - (value.timestamp || Date.now());
-            const maxAge = 30 * 60 * 1000; // 30 分钟
+            const maxAge = 5 * 60 * 1000; // 5 分钟
             return age > maxAge;
         }
-        return false;
+        // 对于非 token 缓存项，检查是否超过 30 分钟
+        const age = Date.now() - (value.timestamp || Date.now());
+        const maxAge = 30 * 60 * 1000; // 30 分钟
+        return age > maxAge;
     }
 
     get(key) {
@@ -103,14 +171,19 @@ class LRUCache {
             if (this.isExpired(key, value)) {
                 console.log(`[Cache] EXPIRED for key: ${key}, removing...`);
                 this.cache.delete(key);
+                this.currentBytes -= value.size || 0;
                 this.misses++;
+                this.scheduleSave();
                 return null;
             }
 
             this.hits++;
-            // LRU: 移到最后
+            // 增加访问次数
+            value.accessCount = (value.accessCount || 0) + 1;
+            // LRU: 移到最后（保持Map顺序，访问多的在后面）
             this.cache.delete(key);
             this.cache.set(key, value);
+
             return value;
         }
         this.misses++;
@@ -125,29 +198,58 @@ class LRUCache {
             this.cache.delete(key);
         }
 
-        // 添加新值
-        this.cache.set(key, { ...value, size, timestamp: Date.now() });
+        // 添加新值（继承原有的访问次数）
+        const existingAccessCount = value.accessCount || 0;
+        this.cache.set(key, { ...value, size, timestamp: Date.now(), accessCount: existingAccessCount });
         this.currentBytes += size;
 
         // 检查是否需要淘汰
         this.evict();
+
+        // 异步保存到磁盘
+        this.scheduleSave();
+    }
+
+    // 调度保存，避免频繁写入
+    scheduleSave() {
+        if (!this.persistPath) return;
+
+        if (!this.pendingSave) {
+            this.pendingSave = true;
+            setTimeout(() => {
+                this.saveToDisk();
+                this.pendingSave = false;
+            }, 5000); // 5秒后保存
+        }
     }
 
     evict() {
-        // 按数量淘汰
+        // 按数量淘汰（淘汰访问次数最少的）
         while (this.cache.size > this.maxSize) {
-            const firstKey = this.cache.keys().next().value;
-            const value = this.cache.get(firstKey);
+            const entries = Array.from(this.cache.entries());
+            // 按访问次数排序，淘汰最少的
+            entries.sort((a, b) => (a[1].accessCount || 0) - (b[1].accessCount || 0));
+
+            const firstKey = entries[0][0];
+            const value = entries[0][1];
             this.currentBytes -= value.size || 0;
             this.cache.delete(firstKey);
+
+            console.log(`[Cache] Evicted ${firstKey} (accessCount: ${value.accessCount || 0})`);
         }
 
-        // 按大小淘汰
+        // 按大小淘汰（优先淘汰访问次数少的）
         while (this.currentBytes > this.maxBytes && this.cache.size > 0) {
-            const firstKey = this.cache.keys().next().value;
-            const value = this.cache.get(firstKey);
+            const entries = Array.from(this.cache.entries());
+            // 按访问次数排序
+            entries.sort((a, b) => (a[1].accessCount || 0) - (b[1].accessCount || 0));
+
+            const firstKey = entries[0][0];
+            const value = entries[0][1];
             this.currentBytes -= value.size || 0;
             this.cache.delete(firstKey);
+
+            console.log(`[Cache] Evicted by size: ${firstKey} (accessCount: ${value.accessCount || 0}, size: ${(value.size / 1024 / 1024).toFixed(2)} MB)`);
         }
     }
 
@@ -156,6 +258,32 @@ class LRUCache {
         this.currentBytes = 0;
         this.hits = 0;
         this.misses = 0;
+
+        // 清空持久化文件
+        if (this.persistPath) {
+            this.saveToDisk();
+        }
+    }
+
+    // 清理过期缓存
+    cleanupExpired() {
+        const expiredKeys = [];
+
+        for (const [key, value] of this.cache.entries()) {
+            if (this.isExpired(key, value)) {
+                expiredKeys.push(key);
+                this.currentBytes -= value.size || 0;
+            }
+        }
+
+        for (const key of expiredKeys) {
+            this.cache.delete(key);
+        }
+
+        if (expiredKeys.length > 0) {
+            console.log(`[Cache] Cleaned up ${expiredKeys.length} expired entries`);
+            this.saveToDisk();
+        }
     }
 
     getStats() {
@@ -177,16 +305,40 @@ class LRUCache {
             key,
             size: value.size,
             timestamp: new Date(value.timestamp).toISOString(),
-            age: Math.floor((Date.now() - value.timestamp) / 1000) // 秒
+            age: Math.floor((Date.now() - value.timestamp) / 1000), // 秒
+            accessCount: value.accessCount || 0
         }));
     }
 }
 
-// 创建缓存实例
+// 缓存持久化文件路径
+const CACHE_PERSIST_PATH = path.join(__dirname, 'cache-persist.json');
+
+// 创建缓存实例（支持持久化）
 const responseCache = new LRUCache(
     200, // 最多200个缓存项
-    1024 * 1024 * 1024 // 最多1GB
+    1024 * 1024 * 1024, // 最多1GB
+    CACHE_PERSIST_PATH // 持久化路径
 );
+
+// 定期清理过期缓存（每30分钟执行一次）
+setInterval(() => {
+    console.log('[Cache] Running periodic cleanup...');
+    responseCache.cleanupExpired();
+}, 30 * 60 * 1000);
+
+// 进程退出时保存缓存
+process.on('SIGINT', () => {
+    console.log('[Cache] Saving cache before exit...');
+    responseCache.saveToDisk();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('[Cache] Saving cache before exit...');
+    responseCache.saveToDisk();
+    process.exit(0);
+});
 
 // ==================== 辅助函数 ====================
 function logToFile(msg) {
