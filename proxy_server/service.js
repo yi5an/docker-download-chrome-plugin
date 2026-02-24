@@ -548,10 +548,19 @@ app.get('/proxy', async (req, res) => {
         recordTraffic(cleanUrl, buffer.length, false);
 
         // 发送响应
+        console.log('[proxy] 准备发送响应:', {
+            status: resp.status,
+            contentType: contentType,
+            bufferSize: buffer.length,
+            bufferType: buffer.constructor.name
+        });
+
         res.status(resp.status);
         res.set('X-Cache', 'MISS');
         if (contentType) res.set('content-type', contentType);
-        res.send(buffer);
+
+        // 使用 end() 方法发送 Buffer
+        res.end(buffer);
 
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
