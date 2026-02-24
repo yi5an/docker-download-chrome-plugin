@@ -222,7 +222,9 @@ app.get('/proxy', async (req, res) => {
 
     console.log('[proxy] 原始请求:', req.originalUrl);
     console.log('[proxy] 解析目标:', targetUrl);
-    console.log('[proxy] 跳过缓存:', skipCache ? '是' : '否');
+    const skipCacheByHeader = req.headers['x-skip-cache'] === 'true';
+    const skipCacheByUrl = !!req.query._nocache;
+    console.log('[proxy] 跳过缓存:', skipCache ? '是' : '否', `(header: ${skipCacheByHeader}, url: ${skipCacheByUrl})`);
     console.log('[proxy] 请求类型:', isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'));
     logToFile(`[Request] Original: ${req.originalUrl}`);
     logToFile(`[Request] Target: ${targetUrl}`);
@@ -233,30 +235,33 @@ app.get('/proxy', async (req, res) => {
     }
 
     try {
-        // 白名单检查（移除 _nocache 参数后再检查）
-        const urlForCheck = targetUrl.replace(/[?&]_nocache=\d+/, '');
-        if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(urlForCheck)) {
+        // 清理 URL：移除 _nocache 参数（用于白名单检查和缓存键）
+        const cleanUrl = targetUrl.replace(/[?&]_nocache=\d+/, '');
+
+        // 白名单检查
+        if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(cleanUrl)) {
             console.error('[proxy] 非法目标:', targetUrl);
             return res.status(403).send('Forbidden');
         }
 
-        // 构建缓存键（包含 URL 和 Authorization header 的哈希）
+        // 构建缓存键（使用干净的 URL，不包含 _nocache 参数，同时包含 Authorization header 的哈希）
         // 这样不同 token 的请求会有不同的缓存，避免 token 过期导致的 401 缓存问题
         const authHash = getAuthHash(req.headers['authorization']);
-        const cacheKey = `${targetUrl}#${authHash}`;
+        const cacheKey = `${cleanUrl}#${authHash}`;
 
         console.log('[proxy] 缓存键 (auth hash):', authHash);
+        console.log('[proxy] 清理后的 URL (用于缓存):', cleanUrl);
 
         // 检查缓存（如果需要跳过缓存则不检查）
         // 注意：blob 请求不使用缓存（文件太大，且可能有问题）
         if (!skipCache && !isBlobRequest) {
             const cached = responseCache.get(cacheKey);
             if (cached) {
-                console.log('[Cache] HIT for:', targetUrl, 'auth:', authHash);
-                logToFile(`[Cache] HIT: ${targetUrl}`);
+                console.log('[Cache] HIT for:', cleanUrl, 'auth:', authHash);
+                logToFile(`[Cache] HIT: ${cleanUrl}`);
 
                 // 记录流量（来自缓存）
-                recordTraffic(targetUrl, cached.size, true);
+                recordTraffic(cleanUrl, cached.size, true);
 
                 // 设置响应头
                 res.status(200);
@@ -270,17 +275,14 @@ app.get('/proxy', async (req, res) => {
         } else if (isBlobRequest) {
             console.log('[Cache] SKIPPED (blob request, too large)');
         } else {
-            console.log('[Cache] SKIPPED for:', targetUrl);
+            console.log('[Cache] SKIPPED for:', cleanUrl);
         }
 
-        console.log('[Cache] MISS for:', targetUrl);
-        logToFile(`[Cache] MISS: ${targetUrl}`);
+        console.log('[Cache] MISS for:', cleanUrl);
+        logToFile(`[Cache] MISS: ${cleanUrl}`);
 
         // 调试：打印收到的所有请求头
         console.log('[proxy] 收到的请求头:', JSON.stringify(req.headers, null, 2));
-
-        // 移除 URL 中的 _nocache 参数（Docker Registry 可能不认识这个参数）
-        const cleanUrl = targetUrl.replace(/[?&]_nocache=\d+/, '');
 
         // 缓存未命中，发起实际请求
         const headers = {};
@@ -323,7 +325,7 @@ app.get('/proxy', async (req, res) => {
                 status: resp.status
             }, buffer.length);
 
-            console.log('[Cache] Cached:', targetUrl, 'auth:', authHash, 'size:', buffer.length);
+            console.log('[Cache] Cached:', cleanUrl, 'auth:', authHash, 'size:', buffer.length);
         } else if (resp.status !== 200) {
             console.log('[Cache] NOT cached (non-200 response):', resp.status);
         } else if (isBlobRequest) {
@@ -331,7 +333,7 @@ app.get('/proxy', async (req, res) => {
         }
 
         // 记录流量（来自网络）
-        recordTraffic(targetUrl, buffer.length, false);
+        recordTraffic(cleanUrl, buffer.length, false);
 
         // 发送响应
         res.status(resp.status);

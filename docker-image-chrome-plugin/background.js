@@ -214,15 +214,15 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   const strategies = useProxy ? ['proxy', 'direct'] : ['direct', 'proxy'];
   const errors = [];
 
-  // 如果需要跳过缓存，在 URL 中添加 nocache 参数
-  // 代理服务器会识别这个参数并跳过缓存
+  // 如果需要跳过缓存，通过 HTTP header 通知代理服务器
+  // 注意：不使用 URL 参数，因为 Docker Registry 可能不接受额外的查询参数
   let proxyUrl = url;
-  if (skipCache && useProxy) {
-    const nocacheParam = `_nocache=${Date.now()}`;
-    proxyUrl = url.includes('?') ? `${url}&${nocacheParam}` : `${url}?${nocacheParam}`;
+  if (skipCache) {
+    options.headers = options.headers || {};
+    options.headers['X-Skip-Cache'] = 'true';
   }
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}`);
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   for (const strategy of strategies) {
     try {
