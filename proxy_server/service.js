@@ -450,14 +450,21 @@ app.get('/proxy', async (req, res) => {
                 // 记录流量（来自缓存）
                 recordTraffic(cleanUrl, cached.size, true);
 
-                // 设置响应头
-                res.status(200);
-                res.set('X-Cache', 'HIT');
-                res.set('Content-Type', cached.contentType);
-                res.set('Content-Length', cached.data.length);
+                console.log('[proxy] 从缓存发送响应:', {
+                    contentType: cached.contentType,
+                    bufferSize: cached.data.length,
+                    bufferType: cached.data.constructor.name
+                });
 
-                // 发送缓存的数据
-                return res.send(cached.data);
+                // 设置所有响应头
+                res.status(200);
+                res.setHeader('X-Cache', 'HIT');
+                if (cached.contentType) res.setHeader('Content-Type', cached.contentType);
+                res.setHeader('Content-Length', cached.data.length);
+
+                // 写入并结束响应
+                res.write(cached.data);
+                return res.end();
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -555,12 +562,15 @@ app.get('/proxy', async (req, res) => {
             bufferType: buffer.constructor.name
         });
 
+        // 设置所有响应头
         res.status(resp.status);
-        res.set('X-Cache', 'MISS');
-        if (contentType) res.set('content-type', contentType);
+        res.setHeader('X-Cache', 'MISS');
+        if (contentType) res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', buffer.length);
 
-        // 使用 end() 方法发送 Buffer
-        res.end(buffer);
+        // 写入并结束响应
+        res.write(buffer);
+        res.end();
 
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
