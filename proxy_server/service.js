@@ -498,7 +498,14 @@ app.get('/proxy', async (req, res) => {
         console.log('[proxy] 发起fetch:', cleanUrl, logHeaders);
         console.log('[proxy] 使用代理:', USE_PROXY ? PROXY_URL : '直连');
 
-        const fetchOptions = { headers };
+        const fetchOptions = {
+            headers: {
+                'User-Agent': 'docker-download-extension/1.0',
+                ...headers
+            },
+            timeout: 120000, // 120秒超时
+            redirect: 'follow' // 跟随重定向
+        };
         if (proxyAgent) {
             fetchOptions.agent = proxyAgent;
         }
