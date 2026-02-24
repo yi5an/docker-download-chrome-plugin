@@ -5,7 +5,7 @@
 importScripts('config.js');
 
 // 加载docker-download.js
-importScripts('core/docker-download.js');
+importScripts('./core/docker-download.js');
 
 // 然后加载background.js
 importScripts('background.js');
