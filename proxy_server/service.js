@@ -279,6 +279,9 @@ app.get('/proxy', async (req, res) => {
         // 调试：打印收到的所有请求头
         console.log('[proxy] 收到的请求头:', JSON.stringify(req.headers, null, 2));
 
+        // 移除 URL 中的 _nocache 参数（Docker Registry 可能不认识这个参数）
+        const cleanUrl = targetUrl.replace(/[?&]_nocache=\d+/, '');
+
         // 缓存未命中，发起实际请求
         const headers = {};
         // 注意：Express 会将 header 名称转为小写
@@ -291,7 +294,7 @@ app.get('/proxy', async (req, res) => {
 
         const logHeaders = { ...headers };
         if (logHeaders['Authorization']) logHeaders['Authorization'] = 'Bearer ******';
-        console.log('[proxy] 发起fetch:', targetUrl, logHeaders);
+        console.log('[proxy] 发起fetch:', cleanUrl, logHeaders);
         console.log('[proxy] 使用代理:', USE_PROXY ? PROXY_URL : '直连');
 
         const fetchOptions = { headers };
@@ -299,7 +302,7 @@ app.get('/proxy', async (req, res) => {
             fetchOptions.agent = proxyAgent;
         }
 
-        const resp = await fetch(targetUrl, fetchOptions);
+        const resp = await fetch(cleanUrl, fetchOptions);
         const contentType = resp.headers.get('content-type');
         const contentLength = parseInt(resp.headers.get('content-length') || '0');
 
