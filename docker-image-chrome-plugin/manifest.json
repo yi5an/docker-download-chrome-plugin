@@ -13,6 +13,7 @@
     "https://hub.docker.com/*",
     "https://registry-1.docker.io/*",
     "http://123.57.165.38:7000/*",
+    "http://103.143.239.31:7000/*",
     "http://ip-api.com/*",
     "https://auth.docker.io/*"
   ],
