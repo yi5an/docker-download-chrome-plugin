@@ -8,8 +8,8 @@ const USE_PROXY = process.env.USE_PROXY === 'true';
 const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
 
 // 缓存配置（可通过环境变量控制）
-const CACHE_BLOB = process.env.CACHE_BLOB === 'true'; // 是否缓存blob请求
-const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '50') * 1024 * 1024; // blob缓存大小限制（MB）
+const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob，只有明确设置为false时才禁用
+const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '200') * 1024 * 1024; // blob缓存大小限制（MB），默认200MB
 
 console.log(`[Config] Blob caching: ${CACHE_BLOB ? 'ENABLED' : 'DISABLED'}, Max size: ${(CACHE_BLOB_MAX_SIZE / 1024 / 1024).toFixed(2)} MB`);
 
