@@ -112,7 +112,9 @@ class LRUCache {
                     continue;
                 }
 
-                this.cache.set(key, value);
+                // 确保从磁盘加载的值有正确的结构
+                const cachedValue = { ...value, accessCount: value.accessCount || 0 };
+                this.cache.set(key, cachedValue);
                 totalBytes += value.size || 0;
                 validCount++;
             }
@@ -313,6 +315,9 @@ class LRUCache {
 
 // 缓存持久化文件路径
 const CACHE_PERSIST_PATH = path.join(__dirname, 'cache-persist.json');
+
+console.log(`[Cache] Cache persist path: ${CACHE_PERSIST_PATH}`);
+console.log(`[Cache] Cache file exists: ${fs.existsSync(CACHE_PERSIST_PATH)}`);
 
 // 创建缓存实例（支持持久化）
 const responseCache = new LRUCache(
