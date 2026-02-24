@@ -91,6 +91,20 @@ flowchart TD
 - 历史下载记录会保存在插件中，用户可以查看、重试或删除历史任务。
 
 ---
+## 私有镜像下载
+- **Docker Hub认证支持**：在插件popup界面可以配置Docker Hub用户名和密码
+  - 支持用户名/密码或访问令牌（Access Token）
+  - 对于私有镜像（如`mcp/playwright`），会自动使用认证信息
+  - 认证失败时会自动降级尝试公开镜像访问
+- **多种Token Scope**：支持尝试不同的权限范围
+  - `repository:image:pull` - 基本拉取权限
+  - `repository:image:pull,push` - 扩展权限
+  - `repository:image:*,pull` - 最广权限
+- **自动Token刷新**：遇到401错误时自动刷新token并重试
+- **Accept请求头修复**：添加了Docker Registry blob下载的标准Accept头
+- **Service Worker超时优化**：防止长时间下载被终止
+
+---
 
 ## 五、目录结构
 
@@ -124,6 +138,14 @@ docker-image-chrome-plugin/
 2. **大文件分片下载与打包**
    - 浏览器端下载大文件需考虑内存与性能，建议分片处理。
    - 需用 JS 实现 gzip 解压与 tar 打包（可用 pako、tar-js 等库）。
+
+2. **中转服务器与缓存**
+   - 通过`proxy_server/service.js`代理Docker Registry请求
+   - **缓存持久化**：缓存数据保存到`cache-persist.json`
+   - **LRU淘汰策略**：基于访问次数淘汰，访问少的优先淘汰
+   - **可配置Blob缓存**：`CACHE_BLOB`环境变量控制是否缓存blob请求
+   - **缓存大小限制**：`CACHE_BLOB_MAX_SIZE`控制blob缓存上限（默认200MB）
+   - **过期时间**：Token 5分钟，其他30分钟
 
 3. **页面注入与交互**
    - 需适配 DockerHub 页面结构，防止页面更新导致按钮失效。
