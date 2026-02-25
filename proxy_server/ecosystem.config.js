@@ -10,7 +10,7 @@ module.exports = {
         CACHE_BLOB: 'true',              // 是否缓存blob请求（true=启用，false=禁用）
         CACHE_BLOB_MAX_SIZE: '500',      // blob缓存大小限制（MB），提高至500MB
         // 性能优化配置
-        REQUEST_TIMEOUT: '300',          // 请求超时：300秒
+        REQUEST_TIMEOUT: '1800',         // 请求超时：1800秒（30分钟）
         MAX_CONCURRENT_REQUESTS: '20',    // 最大并发请求数
         MAX_RESPONSE_SIZE: '10000',       // 最大响应大小：10GB
         STREAM_THRESHOLD: '50'           // 流式处理阈值：50MB
@@ -22,7 +22,7 @@ module.exports = {
         CACHE_BLOB: 'true',              // 是否缓存blob请求（true=启用，false=禁用）
         CACHE_BLOB_MAX_SIZE: '1000',      // 国外网络更好，缓存1GB
         // 性能优化配置
-        REQUEST_TIMEOUT: '300',          // 请求超时：300秒
+        REQUEST_TIMEOUT: '1800',         // 请求超时：1800秒（30分钟）
         MAX_CONCURRENT_REQUESTS: '50',   // 国外并发可以更高
         MAX_RESPONSE_SIZE: '20000',       // 最大响应大小：20GB
         STREAM_THRESHOLD: '50'           // 流式处理阈值：50MB
