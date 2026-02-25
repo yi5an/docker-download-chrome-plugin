@@ -461,12 +461,12 @@ app.get('/proxy', async (req, res) => {
 
                 // 设置 Content-Type
                 if (cached.contentType) {
-                    res.set('Content-Type', cached.contentType);
+                    res.setHeader('Content-Type', cached.contentType);
                 }
 
-                // 将 Buffer 转换为 Uint8Array 后发送
-                const uint8Array = new Uint8Array(cached.data);
-                return res.send(uint8Array);
+                // 使用原生 Node.js 方法发送响应
+                res.statusCode = 200;
+                return res.end(cached.data);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -561,12 +561,12 @@ app.get('/proxy', async (req, res) => {
 
         // 设置 Content-Type
         if (contentType) {
-            res.set('Content-Type', contentType);
+            res.setHeader('Content-Type', contentType);
         }
 
-        // 将 Buffer 转换为 Uint8Array 后发送
-        const uint8Array = new Uint8Array(buffer);
-        res.send(uint8Array);
+        // 使用原生 Node.js 方法发送响应
+        res.statusCode = 200;
+        res.end(buffer);
 
         console.log('[proxy] 响应已发送');
 
