@@ -374,9 +374,11 @@ function logTracking(data) {
 
 // ==================== Express 中间件 ====================
 app.use(express.json());
-
-// 允许所有跨域
 app.use((req, res, next) => {
+    // 诊断日志：记录所有请求的来源
+    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    console.log(`[Request] Received ${req.method} ${req.path} from ${clientIP}`);
+
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
