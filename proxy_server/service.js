@@ -459,14 +459,11 @@ app.get('/proxy', async (req, res) => {
 
                 console.log('[proxy] 从缓存发送响应');
 
-                // 设置 Content-Type
-                if (cached.contentType) {
-                    res.setHeader('Content-Type', cached.contentType);
-                }
-
-                // 使用原生 Node.js 方法发送响应
-                res.statusCode = 200;
-                return res.end(cached.data);
+                // 发送响应（使用旧版本的逻辑）
+                res.status(200);
+                res.set('X-Cache', 'HIT');
+                if (cached.contentType) res.set('content-type', cached.contentType);
+                return res.send(cached.data);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -556,19 +553,14 @@ app.get('/proxy', async (req, res) => {
         // 记录流量（来自网络）
         recordTraffic(cleanUrl, buffer.length, false);
 
+        // 发送响应（使用旧版本的逻辑）
+        res.status(resp.status);
+        res.set('X-Cache', 'MISS');
+        if (contentType) res.set('content-type', contentType);
+        res.send(buffer);
+
         const duration = Date.now() - startTime;
-        console.log('[proxy] 请求完成，耗时:', duration, 'ms，准备发送响应');
-
-        // 设置 Content-Type
-        if (contentType) {
-            res.setHeader('Content-Type', contentType);
-        }
-
-        // 使用原生 Node.js 方法发送响应
-        res.statusCode = 200;
-        res.end(buffer);
-
-        console.log('[proxy] 响应已发送');
+        console.log('[proxy] 请求完成，耗时:', duration, 'ms');
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
