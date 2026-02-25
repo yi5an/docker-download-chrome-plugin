@@ -2,6 +2,9 @@ const fetch = require('node-fetch');
 const express = require('express');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
+// 初始化 Express 应用
+const app = express();
+
 // 代理配置（可通过环境变量控制）
 const USE_PROXY = process.env.USE_PROXY === 'true';
 const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
