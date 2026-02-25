@@ -228,9 +228,12 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   // 添加 Cloudflare 相关域名匹配
   const isCloudflareRegistry = /production\.cloudflare\.docker\.com/.test(url);
 
+  // 检测地域（会话级别缓存）
+  const isChina = await checkGeoLocation();
+
   let useProxy = isDockerRegistry || isCloudflareRegistry; // Docker Registry 和 Cloudflare 都强制代理
   if (!isDockerRegistry) {
-    useProxy = await checkGeoLocation(); // 其他请求按地理位置判断
+    useProxy = isChina; // 国内IP使用代理，国外IP直连
   }
 
   // 定义尝试顺序
@@ -248,11 +251,16 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
 
   console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
+  // 根据地域获取动态代理配置
+  const proxyConfig = getProxyConfig(isChina);
+  const dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
+  console.log(`[ProxyFetch] Using proxy based on location: ${isChina ? 'China (domestic)' : 'Overseas'}, Proxy: ${dynamicProxyBase}`);
+
   for (const strategy of strategies) {
     try {
       if (strategy === 'proxy') {
         // 使用带 nocache 参数的 URL（如果需要跳过缓存）
-        const actualProxyUrl = DEFAULT_PROXY_BASE + encodeURIComponent(proxyUrl);
+        const actualProxyUrl = dynamicProxyBase + encodeURIComponent(proxyUrl);
         console.log(`[ProxyFetch] Attempting PROXY: ${actualProxyUrl}`);
         const resp = await fetchWithTimeout(actualProxyUrl, options, timeout);
 
