@@ -1,6 +1,5 @@
 const fetch = require('node-fetch');
 const express = require('express');
-const app = express();
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 // 代理配置（可通过环境变量控制）
@@ -11,13 +10,79 @@ const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
 const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob，只有明确设置为false时才禁用
 const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '200') * 1024 * 1024; // blob缓存大小限制（MB），默认200MB
 
+// 新增：内存和连接配置
+const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || '300') * 1000; // 请求超时（秒），默认300秒
+const MAX_CONCURRENT_REQUESTS = parseInt(process.env.MAX_CONCURRENT_REQUESTS || '20'); // 最大并发请求数，默认20
+const MAX_RESPONSE_SIZE = parseInt(process.env.MAX_RESPONSE_SIZE || '10000') * 1024 * 1024; // 最大响应大小限制（MB），默认10GB
+const STREAM_THRESHOLD = parseInt(process.env.STREAM_THRESHOLD || '50') * 1024 * 1024; // 流式处理阈值（MB），默认50MB
+
 console.log(`[Config] Blob caching: ${CACHE_BLOB ? 'ENABLED' : 'DISABLED'}, Max size: ${(CACHE_BLOB_MAX_SIZE / 1024 / 1024).toFixed(2)} MB`);
+console.log(`[Config] Request timeout: ${REQUEST_TIMEOUT / 1000}s, Max concurrent: ${MAX_CONCURRENT_REQUESTS}`);
+console.log(`[Config] Stream threshold: ${(STREAM_THRESHOLD / 1024 / 1024).toFixed(2)} MB, Max response: ${(MAX_RESPONSE_SIZE / 1024 / 1024).toFixed(2)} MB`);
 
 // 根据环境变量决定是否使用代理
 const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
 
+// ==================== 定时清理和健康检查 ====================
+// 每30秒清理一次超时的请求
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, request] of activeConnections) {
+        if (now - request.startTime > REQUEST_TIMEOUT) {
+            console.log(`[Cleanup] Force cleanup request ${id}`);
+            request.controller.abort();
+        }
+    }
+}, 30000);
+
+// 定期内存报告
+setInterval(() => {
+    const memory = checkMemoryUsage();
+    const requestCount = activeRequests.size;
+    console.log(`[Health] Memory: ${memory.percentage.toFixed(2)}%, Active requests: ${requestCount}`);
+}, 60000);
+
 const fs = require('fs');
 const path = require('path');
+const { AbortController } = require('node-abort-controller');
+
+// ==================== 连接管理和并发控制 ====================
+const activeRequests = new Set();
+const activeConnections = new Map();
+
+// 内存监控
+function checkMemoryUsage() {
+    const used = process.memoryUsage().heapUsed / 1024 / 1024;
+    const total = process.memoryUsage().heapTotal / 1024 / 1024;
+    const percentage = (used / total) * 100;
+
+    if (percentage > 80) {
+        console.warn(`[Memory] High usage: ${percentage.toFixed(2)}% (${used.toFixed(2)}MB / ${total.toFixed(2)}MB)`);
+    }
+
+    return { used, total, percentage };
+}
+
+// 请求控制器
+class RequestController {
+    constructor() {
+        this.id = Date.now();
+        this.startTime = Date.now();
+        this.aborted = false;
+        this.controller = new AbortController();
+    }
+
+    async cleanup() {
+        this.aborted = true;
+        this.controller.abort();
+        activeRequests.delete(this.id);
+        console.log(`[RequestController] Request ${this.id} cleaned up, duration: ${Date.now() - this.startTime}ms`);
+    }
+
+    get signal() {
+        return this.controller.signal;
+    }
+}
 
 // ==================== 流量统计 ====================
 const TRAFFIC_LOG_PATH = path.join(__dirname, 'traffic.log');
@@ -408,13 +473,32 @@ app.get('/proxy', async (req, res) => {
     const skipCache = req.query._nocache || req.headers['x-skip-cache'] === 'true';
     const startTime = Date.now();
 
+    // 检查并发限制
+    if (activeRequests.size >= MAX_CONCURRENT_REQUESTS) {
+        console.error('[proxy] 最大并发请求数已达到:', MAX_CONCURRENT_REQUESTS);
+        return res.status(429).send('Too Many Requests');
+    }
+
+    // 检查内存使用
+    const memory = checkMemoryUsage();
+    if (memory.percentage > 90) {
+        console.error('[proxy] 内存使用率过高:', memory.percentage.toFixed(2) + '%');
+        return res.status(503).send('Service Temporarily Unavailable');
+    }
+
     // 检查是否是 blob 下载请求（layer 文件）
     const isBlobRequest = targetUrl && targetUrl.includes('/blobs/');
     // 检查是否是 manifest 请求
     const isManifestRequest = targetUrl && targetUrl.includes('/manifests/');
+    // 计算预估文件大小（从URL或header中获取）
+    const isLargeFile = isBlobRequest && targetUrl.includes('sha256:');
 
     // 检查是否应该跳过blob缓存（根据配置）
     const shouldSkipBlobCache = isBlobRequest && (!CACHE_BLOB || false);
+
+    // 创建请求控制器
+    const requestController = new RequestController();
+    activeRequests.add(requestController.id);
 
     console.log('[proxy] 原始请求:', req.originalUrl);
     console.log('[proxy] 解析目标:', targetUrl);
@@ -422,11 +506,13 @@ app.get('/proxy', async (req, res) => {
     const skipCacheByUrl = !!req.query._nocache;
     console.log('[proxy] 跳过缓存:', skipCache ? '是' : '否', `(header: ${skipCacheByHeader}, url: ${skipCacheByUrl})`);
     console.log('[proxy] 请求类型:', isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'));
+    console.log('[proxy] 流式处理:', isLargeFile ? '启用' : '禁用');
     logToFile(`[Request] Original: ${req.originalUrl}`);
     logToFile(`[Request] Target: ${targetUrl}`);
 
     if (!targetUrl) {
         console.error('[proxy] 缺少url参数');
+        requestController.cleanup();
         return res.status(400).send('Missing url param');
     }
 
@@ -522,51 +608,117 @@ app.get('/proxy', async (req, res) => {
         const contentType = resp.headers.get('content-type');
         const contentLength = parseInt(resp.headers.get('content-length') || '0');
 
-        console.log('[proxy] 响应状态:', resp.status, 'content-type:', contentType, 'size:', contentLength);
+        console.log('[proxy] 响应状态:', resp.status, 'content-type:', contentType, 'content-length:', contentLength);
 
-        // 读取响应数据
-        const buffer = await resp.buffer();
+        // 检查响应大小限制
+        if (contentLength > MAX_RESPONSE_SIZE) {
+            console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
+            requestController.cleanup();
+            return res.status(413).send('Payload Too Large');
+        }
 
-        // 缓存策略：
-        // 1. 只缓存成功的响应（status === 200）
-        // 2. 根据配置决定是否缓存 blob 请求
-        // 3. 不缓存过大的响应（限制由CACHE_BLOB_MAX_SIZE控制）
-        // 4. 缓存键包含 auth hash，避免 token 问题
-        const shouldCache = resp.status === 200 && buffer.length < CACHE_BLOB_MAX_SIZE;
+        let responseData;
+        let isFromCache = false;
+
+        // 缓存策略检查
+        const shouldCache = resp.status === 200 && !isLargeFile && contentLength < CACHE_BLOB_MAX_SIZE;
 
         if (shouldCache) {
+            // 对于小文件，先读取整个响应到内存进行缓存
+            responseData = await resp.buffer();
+
             responseCache.set(cacheKey, {
-                data: buffer,
+                data: responseData,
                 contentType: contentType,
                 status: resp.status
-            }, buffer.length);
+            }, responseData.length);
 
-            console.log('[Cache] Cached:', cleanUrl, 'auth:', authHash, 'size:', buffer.length);
+            console.log('[Cache] Cached:', cleanUrl, 'auth:', authHash, 'size:', responseData.length);
+            isFromCache = true;
         } else if (resp.status !== 200) {
             console.log('[Cache] NOT cached (non-200 response):', resp.status);
-        } else if (isBlobRequest) {
-            if (!CACHE_BLOB) {
-                console.log('[Cache] NOT cached (blob request, disabled by config)');
-            } else {
-                console.log('[Cache] NOT cached (blob request, too large):', 'size:', buffer.length, 'limit:', CACHE_BLOB_MAX_SIZE);
+            // 对于非200响应，仍需要读取数据以释放内存
+            responseData = await resp.buffer();
+        } else if (isLargeFile) {
+            console.log('[Stream] Using streaming for large file:', contentLength, 'bytes');
+
+            // 流式处理大文件
+            res.status(resp.status);
+            res.set('X-Cache', 'MISS');
+            if (contentType) res.set('content-type', contentType);
+
+            // 设置Transfer-Encoding: chunked
+            res.setHeader('Transfer-Encoding', 'chunked');
+
+            // 使用流式传输
+            let bytesWritten = 0;
+            try {
+                await new Promise((resolve, reject) => {
+                    resp.body.on('data', chunk => {
+                        if (requestController.aborted) {
+                            resp.body.destroy();
+                            return reject(new Error('Request aborted'));
+                        }
+
+                        res.write(chunk);
+                        bytesWritten += chunk.length;
+
+                        // 记录进度
+                        if (bytesWritten % (10 * 1024 * 1024) === 0) { // 每10MB记录一次
+                            console.log(`[Stream] Progress: ${bytesWritten} / ${contentLength}`);
+                        }
+                    });
+
+                    resp.body.on('end', resolve);
+                    resp.body.on('error', reject);
+
+                    // 超时处理
+                    setTimeout(() => {
+                        if (!requestController.aborted) {
+                            requestController.cleanup();
+                            reject(new Error('Request timeout'));
+                        }
+                    }, REQUEST_TIMEOUT);
+                });
+            } catch (err) {
+                requestController.cleanup();
+                return res.status(500).send(err.message);
             }
+
+            res.end();
+
+            // 记录流量
+            recordTraffic(cleanUrl, bytesWritten, false);
+
+            const duration = Date.now() - startTime;
+            console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
+
+            requestController.cleanup();
+            return;
+        } else {
+            // 对于小但不需要缓存的文件
+            responseData = await resp.buffer();
+            console.log('[Stream] Small file but not cached:', responseData.length);
         }
 
         // 记录流量（来自网络）
-        recordTraffic(cleanUrl, buffer.length, false);
+        recordTraffic(cleanUrl, responseData.length, false);
 
-        // 发送响应（使用旧版本的逻辑）
+        // 发送响应
         res.status(resp.status);
         res.set('X-Cache', 'MISS');
         if (contentType) res.set('content-type', contentType);
-        res.send(buffer);
+        res.send(responseData);
 
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
+        requestController.cleanup();
         res.status(500).send(err.message);
+    } finally {
+        requestController.cleanup();
     }
 });
 
