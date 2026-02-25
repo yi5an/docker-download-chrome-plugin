@@ -28,9 +28,10 @@ module.exports = {
         STREAM_THRESHOLD: '50'           // 流式处理阈值：50MB
       },
       // PM2配置
-      instances: 2,                      // 运行2个实例提高可用性
-      exec_mode: 'cluster',              // 使用cluster模式
-      max_memory_restart: '1G',          // 内存超过1GB时重启
+      instances: 1,                      // 单实例模式（避免cluster模式下的内存分配问题）
+      exec_mode: 'fork',                // fork模式
+      node_args: '--max-old-space-size=512',  // 设置Node.js堆内存限制为512MB
+      max_memory_restart: '512M',       // 内存超过512MB时重启
       min_uptime: '10s',                // 最小运行时间
       max_restarts: 5,                  // 最大重启次数
       merge_logs: true,

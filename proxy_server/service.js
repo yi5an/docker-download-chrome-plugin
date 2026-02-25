@@ -55,15 +55,18 @@ const activeConnections = new Map();
 
 // 内存监控
 function checkMemoryUsage() {
-    const used = process.memoryUsage().heapUsed / 1024 / 1024;
-    const total = process.memoryUsage().heapTotal / 1024 / 1024;
-    const percentage = (used / total) * 100;
+    const heapUsed = process.memoryUsage().heapUsed / 1024 / 1024;
+    const heapTotal = process.memoryUsage().heapTotal / 1024 / 1024;
+    const rss = process.memoryUsage().rss / 1024 / 1024;  // 实际物理内存使用
+    const percentage = (heapUsed / heapTotal) * 100;
+    const rssPercentage = (rss / 512) * 100;  // 基于总限制512MB的百分比
 
-    if (percentage > 80) {
-        console.warn(`[Memory] High usage: ${percentage.toFixed(2)}% (${used.toFixed(2)}MB / ${total.toFixed(2)}MB)`);
+    // 警告基于实际物理内存使用，而不是堆内存比例
+    if (rss > 400) {  // 超过400MB时警告
+        console.warn(`[Memory] High RSS usage: ${rss.toFixed(2)}MB (${rssPercentage.toFixed(2)}% of 512MB), Heap: ${heapUsed.toFixed(2)}MB / ${heapTotal.toFixed(2)}MB`);
     }
 
-    return { used, total, percentage };
+    return { used: heapUsed, total: heapTotal, rss, percentage, rssPercentage };
 }
 
 // 请求控制器
@@ -484,8 +487,8 @@ app.get('/proxy', async (req, res) => {
 
     // 检查内存使用
     const memory = checkMemoryUsage();
-    if (memory.percentage > 90) {
-        console.error('[proxy] 内存使用率过高:', memory.percentage.toFixed(2) + '%');
+    if (memory.rss > 480) {  // 超过480MB时拒绝新请求
+        console.error('[proxy] 内存使用过高:', memory.rss.toFixed(2) + 'MB (' + memory.rssPercentage.toFixed(2) + '%)');
         return res.status(503).send('Service Temporarily Unavailable');
     }
 
