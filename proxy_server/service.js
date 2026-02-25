@@ -463,20 +463,18 @@ app.get('/proxy', async (req, res) => {
                     bufferType: cached.data.constructor.name
                 });
 
-                // 设置所有响应头（确保 CORS 头存在）
-                res.status(200);
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-                res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-                res.setHeader('X-Cache', 'HIT');
-                if (cached.contentType) res.setHeader('Content-Type', cached.contentType);
-                res.setHeader('Content-Length', cached.data.length);
-
                 // 打印实际发送的响应头
                 console.log('[proxy] 缓存响应头:', JSON.stringify(res.getHeaders()));
 
-                // 结束响应
-                return res.end(cached.data);
+                // 使用 res.send() 发送响应（Express 会自动处理 CORS 和 Content-Type）
+                res.set('Access-Control-Allow-Origin', '*');
+                res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+                res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+                res.set('X-Cache', 'HIT');
+                if (cached.contentType) res.set('Content-Type', cached.contentType);
+
+                // 直接发送 buffer
+                return res.send(cached.data);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -574,23 +572,21 @@ app.get('/proxy', async (req, res) => {
             bufferType: buffer.constructor.name
         });
 
-        // 设置所有响应头（确保 CORS 头存在）
-        res.status(resp.status);
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('X-Cache', 'MISS');
-        if (contentType) res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Length', buffer.length);
-
         // 打印实际发送的响应头
         console.log('[proxy] 响应头:', JSON.stringify(res.getHeaders()));
 
-        // 结束响应
-        res.end(buffer);
-
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
+
+        // 使用 res.send() 发送响应（Express 会自动处理 CORS 和 Content-Type）
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+        res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.set('X-Cache', 'MISS');
+        if (contentType) res.set('Content-Type', contentType);
+
+        // 直接发送 buffer
+        res.send(buffer);
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
