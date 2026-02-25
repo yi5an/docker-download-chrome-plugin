@@ -1,6 +1,13 @@
 // background.js
 // 代理 fetch，解决 CORS 问题，并输出详细日志
 
+console.log('[Background] Script starting...');
+
+// 检查依赖
+console.log('[Background] getProxyConfig type:', typeof getProxyConfig);
+console.log('[Background] DEFAULT_PROXY_BASE:', DEFAULT_PROXY_BASE);
+console.log('[Background] TRACKING_URL:', TRACKING_URL);
+
 // DEFAULT_PROXY_BASE 和 TRACKING_URL 从 config.js 中获取
 
 let tasks = [];
