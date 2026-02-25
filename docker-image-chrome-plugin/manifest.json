@@ -29,13 +29,14 @@
         "https://hub.docker.com/r/*/tags*",
         "https://hub.docker.com/_/*/tags*",
         "https://hub.docker.com/*/tags*",
-        "https://hub.docker.com/r/*/*/tags*"
+        "https://hub.docker.com/r/*/*/tags*",
+        "https://hub.docker.com/*/"
       ],
       "js": [
         "config.js",
         "content-script.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_idle"
     }
   ],
   "icons": {
