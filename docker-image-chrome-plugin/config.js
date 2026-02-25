@@ -27,3 +27,6 @@ function getProxyConfig(isChina) {
 // 默认配置：国外代理（向后兼容）
 const DEFAULT_PROXY_BASE = `${PROXY_CONFIG.overseas.base}${PROXY_CONFIG.overseas.proxy}`;
 const TRACKING_URL = `${PROXY_CONFIG.overseas.base}${PROXY_CONFIG.overseas.track}`;
+
+// 在Service Worker中需要将函数挂载到全局对象上
+this.getProxyConfig = getProxyConfig;
