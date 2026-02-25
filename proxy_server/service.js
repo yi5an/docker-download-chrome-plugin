@@ -475,7 +475,12 @@ app.get('/proxy', async (req, res) => {
                 console.log('[proxy] 缓存响应发送完成');
 
                 // 写入并结束响应
-                return res.end(cached.data);
+                try {
+                    return res.end(cached.data);
+                } catch (sendErr) {
+                    console.error('[proxy] 发送缓存响应时出错:', sendErr);
+                    res.status(500).send('Failed to send cached response');
+                }
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {

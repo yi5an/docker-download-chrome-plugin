@@ -207,8 +207,15 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
+      console.error(`[Fetch] Request aborted (timeout): ${url.substring(0, 100)}`);
       throw new Error(`请求超时 (${timeout / 1000}秒)`);
     }
+    console.error(`[Fetch] Request failed:`, {
+      url: url.substring(0, 100),
+      error: err.message,
+      name: err.name,
+      stack: err.stack ? err.stack.substring(0, 200) : 'no stack'
+    });
     throw err;
   }
 }
