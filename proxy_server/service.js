@@ -472,9 +472,10 @@ app.get('/proxy', async (req, res) => {
                 if (cached.contentType) res.setHeader('Content-Type', cached.contentType);
                 res.setHeader('Content-Length', cached.data.length);
 
+                console.log('[proxy] 缓存响应发送完成');
+
                 // 写入并结束响应
-                res.write(cached.data);
-                return res.end();
+                return res.end(cached.data);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
