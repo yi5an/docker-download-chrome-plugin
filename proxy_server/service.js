@@ -457,24 +457,16 @@ app.get('/proxy', async (req, res) => {
                 // 记录流量（来自缓存）
                 recordTraffic(cleanUrl, cached.size, true);
 
-                console.log('[proxy] 从缓存发送响应:', {
-                    contentType: cached.contentType,
-                    bufferSize: cached.data.length,
-                    bufferType: cached.data.constructor.name
-                });
+                console.log('[proxy] 从缓存发送响应');
 
-                // 打印实际发送的响应头
-                console.log('[proxy] 缓存响应头:', JSON.stringify(res.getHeaders()));
+                // 设置 Content-Type
+                if (cached.contentType) {
+                    res.set('Content-Type', cached.contentType);
+                }
 
-                // 使用 res.send() 发送响应（Express 会自动处理 CORS 和 Content-Type）
-                res.set('Access-Control-Allow-Origin', '*');
-                res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-                res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-                res.set('X-Cache', 'HIT');
-                if (cached.contentType) res.set('Content-Type', cached.contentType);
-
-                // 直接发送 buffer
-                return res.send(cached.data);
+                // 将 Buffer 转换为 Uint8Array 后发送
+                const uint8Array = new Uint8Array(cached.data);
+                return res.send(uint8Array);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -564,29 +556,19 @@ app.get('/proxy', async (req, res) => {
         // 记录流量（来自网络）
         recordTraffic(cleanUrl, buffer.length, false);
 
-        // 发送响应
-        console.log('[proxy] 准备发送响应:', {
-            status: resp.status,
-            contentType: contentType,
-            bufferSize: buffer.length,
-            bufferType: buffer.constructor.name
-        });
-
-        // 打印实际发送的响应头
-        console.log('[proxy] 响应头:', JSON.stringify(res.getHeaders()));
-
         const duration = Date.now() - startTime;
-        console.log('[proxy] 请求完成，耗时:', duration, 'ms');
+        console.log('[proxy] 请求完成，耗时:', duration, 'ms，准备发送响应');
 
-        // 使用 res.send() 发送响应（Express 会自动处理 CORS 和 Content-Type）
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-        res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.set('X-Cache', 'MISS');
-        if (contentType) res.set('Content-Type', contentType);
+        // 设置 Content-Type
+        if (contentType) {
+            res.set('Content-Type', contentType);
+        }
 
-        // 直接发送 buffer
-        res.send(buffer);
+        // 将 Buffer 转换为 Uint8Array 后发送
+        const uint8Array = new Uint8Array(buffer);
+        res.send(uint8Array);
+
+        console.log('[proxy] 响应已发送');
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
