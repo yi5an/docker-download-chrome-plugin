@@ -123,8 +123,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // ==================== 超时控制配置 ====================
-const FETCH_TIMEOUT = 120000; // 单次请求超时：120 秒
-const CHUNK_TIMEOUT = 60000;  // 分片下载超时：60 秒
+const FETCH_TIMEOUT = 300000; // 单次请求超时：300 秒
 
 /**
  * 检测是否需要使用代理（仅限中国出口IP）
@@ -547,7 +546,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
 }
 
 /**
- * 下载单个layer（支持自动刷新 token 和重试）
+ * 下载单个layer（支持自动刷新 token 和指数退避重试）
  * @param {string} image 镜像名称
  * @param {Object} layer layer对象
  * @param {string} token 认证token（可能过期，会自动刷新）
@@ -565,39 +564,92 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
   });
   const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
 
-  // 第一次尝试
-  try {
-    console.log(`[Download] Downloading layer ${shortDigest}...`);
-    console.log(`[Download] Token length: ${token.length}`);
-    return await proxyFetch(url, { headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.docker.image.rootfs.diff.tar.gzip,application/vnd.docker.image.rootfs.diff.tar,application/vnd.docker.image.rootfs.undefined,application/vnd.oci.image.manifest.v1+json'
-    } }, 'arrayBuffer', timeout, false);
-  } catch (err) {
-    // 如果是认证错误（401），尝试刷新 token 后重试，并跳过缓存
-    if (err.isAuthError || (err.message && (err.message.includes('401') || err.message.includes('UNAUTHORIZED')))) {
-      console.log(`[Download] Got 401 for layer ${shortDigest}, refreshing token and skipping cache...`);
+  // 最大重试次数和退避时间
+  const maxRetries = 5;
+  const baseDelay = 1000; // 1秒基础延迟
 
-      // 刷新 token（考虑是否使用认证）
-      const newToken = await getDockerToken(image, useAuth);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const currentToken = await getCachedDockerToken(image);
+      console.log(`[Download] Attempt ${attempt + 1}/${maxRetries} downloading layer ${shortDigest}...`);
+      console.log(`[Download] Token length: ${currentToken.length}`);
 
-      // 使用新 token 重试，并跳过代理服务器缓存
-      console.log(`[Download] Retrying layer ${shortDigest} with new token (skip cache)...`);
-      try {
-        return await proxyFetch(url, { headers: {
-          'Authorization': `Bearer ${newToken}`,
-          'Accept': 'application/vnd.docker.image.rootfs.diff.tar.gzip,application/vnd.docker.image.rootfs.diff.tar,application/vnd.docker.image.rootfs.undefined,application/vnd.oci.image.manifest.v1+json'
-        } }, 'arrayBuffer', timeout, true);
-      } catch (retryErr) {
-        console.error(`[Download] Retry failed for layer ${shortDigest}:`, retryErr.message);
-        throw retryErr;
+      // 设置请求头
+      const headers = {
+        'Authorization': `Bearer ${currentToken}`,
+        'Accept': 'application/vnd.docker.image.rootfs.diff.tar.gzip,application/vnd.docker.image.rootfs.diff.tar,application/vnd.docker.image.rootfs.undefined,application/vnd.oci.image.manifest.v1+json'
+      };
+
+      // 如果是重试，跳过代理缓存
+      const skipCache = attempt > 0;
+      if (skipCache) {
+        headers['X-Skip-Cache'] = 'true';
+        console.log(`[Download] Retrying with skip cache: ${attempt}`);
       }
-    }
 
-    // 其他错误直接抛出
-    console.error(`[Download] Failed to download layer ${shortDigest}:`, err.message);
-    throw err;
+      const startTime = Date.now();
+      const data = await proxyFetch(url, { headers }, 'arrayBuffer', timeout, skipCache);
+      const endTime = Date.now();
+      const duration = (endTime - startTime) / 1000;
+
+      console.log(`[Download] Layer ${shortDigest} downloaded successfully in ${duration}s`);
+
+      // 返回下载的数据
+      return data;
+    } catch (err) {
+      const retryDelay = baseDelay * Math.pow(2, attempt); // 指数退避：1s, 2s, 4s, 8s, 16s
+
+      console.warn(`[Download] Attempt ${attempt + 1}/${maxRetries} failed for layer ${shortDigest}: ${err.message}`);
+
+      // 如果是最后一次重试，直接抛出错误
+      if (attempt === maxRetries - 1) {
+        console.error(`[Download] All retries exhausted for layer ${shortDigest}`);
+        throw new Error(`Layer ${shortDigest} download failed after ${maxRetries} attempts: ${err.message}`);
+      }
+
+      // 认证错误立即重试（跳过等待）
+      if (err.isAuthError || (err.message && (err.message.includes('401') || err.message.includes('UNAUTHORIZED')))) {
+        console.log(`[Download] Refreshing token due to 401 error...`);
+        continue; // 直接进行下一次重试
+      }
+
+      // 超时错误立即重试
+      if (err.message && err.message.includes('timeout')) {
+        console.log(`[Download] Timeout error, immediate retry...`);
+        continue; // 直接进行下一次重试
+      }
+
+      // 网络错误（Connection refused, DNS resolution failed 等）需要等待
+      if (err.message && (
+        err.message.includes('Connection refused') ||
+        err.message.includes('DNS resolution failed') ||
+        err.message.includes('NetworkError') ||
+        err.name === 'AbortError'
+      )) {
+        console.log(`[Download] Network error, waiting ${retryDelay / 1000}s before retry...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      // 其他错误（服务器错误等）需要等待
+      if (err.message && (
+        err.message.includes('500') ||
+        err.message.includes('502') ||
+        err.message.includes('503') ||
+        err.message.includes('504')
+      )) {
+        console.log(`[Download] Server error, waiting ${retryDelay / 1000}s before retry...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      // 默认情况下不等待，直接重试
+      console.log(`[Download] Generic error, retrying without delay...`);
+    }
   }
+
+  // 这里不应该到达，但为了完整性
+  throw new Error(`Layer ${layer.digest.substring(7, 19)} download failed after ${maxRetries} attempts`);
 }
 
 async function runDownloadTask(task) {
@@ -665,53 +717,27 @@ async function runDownloadTask(task) {
           });
         }
       });
-      let retryCount = 0;
-      const maxRetries = 3;
-      let lastError = null;
 
-      while (retryCount < maxRetries) {
-        try {
-          // 每次重试前都获取最新的 token（可能是刷新后的）
-          token = await getCachedDockerToken(task.image);
+      // 下载单层（内部已包含完整的重试机制）
+      try {
+        const buf = await downloadSingleLayer(task.image, task.layers[i], token);
 
-          // 下载单层（内部会自动处理 401 并刷新 token）
-          const buf = await downloadSingleLayer(task.image, task.layers[i], token);
+        // 生成layer ID
+        const layerId = await sha256Hash(`${parentId}\n${task.layers[i].digest}\n`);
+        parentId = layerId;
 
-          // 生成layer ID
-          const layerId = await sha256Hash(`${parentId}\n${task.layers[i].digest}\n`);
-          parentId = layerId;
+        // 保存下载的数据
+        downloadedLayers.push({
+          layerData: buf,
+          layerId: layerId,
+          digest: task.layers[i].digest
+        });
 
-          // 保存下载的数据
-          downloadedLayers.push({
-            layerData: buf,
-            layerId: layerId,
-            digest: task.layers[i].digest
-          });
-
-          task.layers[i].status = 'done';
-          lastError = null;
-          break; // Success, exit retry loop
-        } catch (err) {
-          lastError = err;
-          retryCount++;
-          console.warn(`[Download] Layer ${i} failed (Attempt ${retryCount}/${maxRetries}): ${err.message}`);
-
-          if (retryCount < maxRetries) {
-            // 如果是认证错误，强制刷新 token
-            if (err.isAuthError || (err.message && err.message.includes('401'))) {
-              console.log(`[Download] Forcing token refresh after 401 error...`);
-              token = await refreshToken(task.image);
-            }
-            // 等待后重试
-            await new Promise(r => setTimeout(r, 1000 * retryCount)); // Exponential backoff-ish
-          }
-        }
-      }
-
-      if (lastError) {
+        task.layers[i].status = 'done';
+      } catch (err) {
         task.layers[i].status = 'failed';
         task.status = 'failed';
-        task.errorMessage = `下载层 ${task.layers[i].digest.substring(7, 19)} 失败 (重试${maxRetries}次): ${lastError.message}`;
+        task.errorMessage = `下载层 ${task.layers[i].digest.substring(7, 19)} 失败: ${err.message}`;
         moveTaskToHistory(task);
 
         // 向content-script发送下载失败消息
@@ -720,12 +746,12 @@ async function runDownloadTask(task) {
             chrome.tabs.sendMessage(tabs[0].id, {
               type: 'download-status-update',
               status: 'error',
-              message: `下载失败: ${lastError.message}`
+              message: `下载失败: ${err.message}`
             });
           }
         });
 
-        throw lastError;
+        throw err;
       }
       task.finished = task.layers.filter(l => l.status === 'done').length;
       task.running = 0;
