@@ -123,7 +123,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // ==================== 超时控制配置 ====================
-const FETCH_TIMEOUT = 300000; // 单次请求超时：300 秒
+const FETCH_TIMEOUT = 300000; // 单次请求超时：300 秒（与代理服务器保持一致）
 
 /**
  * 检测是否需要使用代理（仅限中国出口IP）
