@@ -506,6 +506,15 @@ app.get('/proxy', async (req, res) => {
     const requestController = new RequestController();
     activeRequests.add(requestController.id);
 
+    // 跟踪响应是否已发送，避免重复发送
+    let responseSent = false;
+    const sendErrorResponse = (status, message) => {
+        if (!responseSent && !res.headersSent) {
+            responseSent = true;
+            return res.status(status).send(message);
+        }
+    };
+
     console.log('[proxy] 原始请求:', req.originalUrl);
     console.log('[proxy] 解析目标:', targetUrl);
     const skipCacheByHeader = req.headers['x-skip-cache'] === 'true';
@@ -519,6 +528,7 @@ app.get('/proxy', async (req, res) => {
     if (!targetUrl) {
         console.error('[proxy] 缺少url参数');
         requestController.cleanup();
+        responseSent = true;
         return res.status(400).send('Missing url param');
     }
 
@@ -529,6 +539,8 @@ app.get('/proxy', async (req, res) => {
         // 白名单检查
         if (!/^https:\/\/((registry-1|auth)\.docker\.io|docker-images-prod\..*\.r2\.cloudflarestorage\.com|production\.cloudflare\.docker\.com)\//.test(cleanUrl)) {
             console.error('[proxy] 非法目标:', targetUrl);
+            responseSent = true;
+            requestController.cleanup();
             return res.status(403).send('Forbidden');
         }
 
@@ -553,11 +565,14 @@ app.get('/proxy', async (req, res) => {
 
                 console.log('[proxy] 从缓存发送响应');
 
-                // 发送响应（使用旧版本的逻辑）
+                // 发送缓存响应
+                responseSent = true;
                 res.status(200);
                 res.set('X-Cache', 'HIT');
                 if (cached.contentType) res.set('content-type', cached.contentType);
-                return res.send(cached.data);
+                res.send(cached.data);
+                requestController.cleanup();
+                return;
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -681,26 +696,26 @@ app.get('/proxy', async (req, res) => {
                     // 超时处理
                     setTimeout(() => {
                         if (!requestController.aborted) {
-                            requestController.cleanup();
                             reject(new Error('Request timeout'));
                         }
                     }, REQUEST_TIMEOUT);
                 });
-            } catch (err) {
+
+                // 正常完成
+                res.end();
+                responseSent = true;
+                recordTraffic(cleanUrl, bytesWritten, false);
+                const duration = Date.now() - startTime;
+                console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
                 requestController.cleanup();
-                return res.status(500).send(err.message);
+                return;
+            } catch (err) {
+                console.error('[Stream] 流式传输失败:', err.message);
+                // 流式传输失败时，不要尝试发送错误响应（可能已经发送了部分数据）
+                // 只是清理资源
+                requestController.cleanup();
+                throw err;  // 让外层catch处理
             }
-
-            res.end();
-
-            // 记录流量
-            recordTraffic(cleanUrl, bytesWritten, false);
-
-            const duration = Date.now() - startTime;
-            console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
-
-            requestController.cleanup();
-            return;
         } else {
             // 对于小但不需要缓存的文件
             responseData = await resp.buffer();
@@ -711,20 +726,29 @@ app.get('/proxy', async (req, res) => {
         recordTraffic(cleanUrl, responseData.length, false);
 
         // 发送响应
-        res.status(resp.status);
-        res.set('X-Cache', 'MISS');
-        if (contentType) res.set('content-type', contentType);
-        res.send(responseData);
+        if (!responseSent) {
+            res.status(resp.status);
+            res.set('X-Cache', 'MISS');
+            if (contentType) res.set('content-type', contentType);
+            res.send(responseData);
+            responseSent = true;
+        }
 
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
+        // 使用安全的方式发送错误响应
+        if (!responseSent) {
+            sendErrorResponse(500, err.message || 'Internal server error');
+        }
         requestController.cleanup();
-        res.status(500).send(err.message);
     } finally {
-        requestController.cleanup();
+        // 确保清理资源
+        if (!responseSent) {
+            requestController.cleanup();
+        }
     }
 });
 
