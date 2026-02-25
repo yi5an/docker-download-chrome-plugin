@@ -242,6 +242,20 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     useProxy = isChina; // 国内IP使用代理，国外IP直连
   }
 
+  // 检测是否需要切换代理（连续502错误时切换）
+  let currentProxyConfig = getProxyConfig(isChina);
+  const fiftyTwoErrors = await chrome.storage.local.get(['proxyFiftyTwoErrors']) || { proxyFiftyTwoErrors: 0 };
+
+  // 如果检测到连续3次502错误，尝试切换到另一个代理
+  if (fiftyTwoErrors.proxyFiftyTwoErrors >= 3) {
+    const newIsChina = !isChina;
+    currentProxyConfig = getProxyConfig(newIsChina);
+    console.log(`[ProxyFetch] Detected consecutive 502 errors, switching from ${isChina ? 'China' : 'Overseas'} to ${newIsChina ? 'China' : 'Overseas'} proxy`);
+
+    // 重置计数
+    chrome.storage.local.set({ proxyFiftyTwoErrors: 0 });
+  }
+
   // 定义尝试顺序
   // 对于 Docker Registry，只尝试代理，不尝试直连（避免 CORS 问题）
   const strategies = (isDockerRegistry || isCloudflareRegistry) ? ['proxy'] : (useProxy ? ['proxy', 'direct'] : ['direct', 'proxy']);
@@ -258,9 +272,19 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   // 根据地域获取动态代理配置
-  const proxyConfig = getProxyConfig(isChina);
-  const dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
-  console.log(`[ProxyFetch] Using proxy based on location: ${isChina ? 'China (domestic)' : 'Overseas'}, Proxy: ${dynamicProxyBase}`);
+  let proxyConfig = getProxyConfig(isChina);
+  let dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
+
+  // 检查是否有代理切换
+  const fiftyTwoErrors = await chrome.storage.local.get(['proxyFiftyTwoErrors']) || { proxyFiftyTwoErrors: 0 };
+  if (fiftyTwoErrors.proxyFiftyTwoErrors >= 3) {
+    const switchedIsChina = !isChina;
+    proxyConfig = getProxyConfig(switchedIsChina);
+    dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
+    console.log(`[ProxyFetch] Switched proxy due to consecutive 502 errors: ${isChina ? 'China' : 'Overseas'} -> ${switchedIsChina ? 'China' : 'Overseas'}`);
+  } else {
+    console.log(`[ProxyFetch] Using proxy based on location: ${isChina ? 'China (domestic)' : 'Overseas'}, Proxy: ${dynamicProxyBase}`);
+  }
 
   for (const strategy of strategies) {
     try {
@@ -317,6 +341,15 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   // 若所有策略都失败
   const finalError = new Error(`All strategies failed. Details: [ ${errors.join(' | ')} ]`);
   console.error(`[ProxyFetch] ${finalError.message}`);
+
+  // 如果是502错误，增加计数
+  if (finalError.message.includes('502') || finalError.message.includes('Bad Gateway') || finalError.message.includes('请求超时 (300秒)')) {
+    const currentCount = await chrome.storage.local.get(['proxyFiftyTwoErrors']) || { proxyFiftyTwoErrors: 0 };
+    const newCount = currentCount.proxyFiftyTwoErrors + 1;
+    chrome.storage.local.set({ proxyFiftyTwoErrors: newCount });
+    console.log(`[ProxyFetch] 502 error count increased to ${newCount}`);
+  }
+
   throw finalError;
 }
 
@@ -619,7 +652,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
         continue; // 直接进行下一次重试
       }
 
-      // 网络错误（Connection refused, DNS resolution failed 等）需要等待
+       // 网络错误（Connection refused, DNS resolution failed 等）需要等待
       if (err.message && (
         err.message.includes('Connection refused') ||
         err.message.includes('DNS resolution failed') ||
@@ -631,10 +664,23 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
         continue;
       }
 
-      // 其他错误（服务器错误等）需要等待
+      // 502 Bad Gateway 错误 - 代理服务器重启
+      if (err.message && (
+        err.message.includes('502') ||
+        err.message.includes('Bad Gateway') ||
+        err.message.includes('请求超时 (300秒)') // 特定于我们的超时提示
+      )) {
+        console.log(`[Download] 502 Bad Gateway - Proxy restart detected, waiting ${retryDelay / 1000}s before retry...`);
+
+        // 增加更长的等待时间，让代理服务器有时间恢复
+        const proxyRestartDelay = Math.max(retryDelay, 5000); // 至少等待5秒
+        await new Promise(resolve => setTimeout(resolve, proxyRestartDelay));
+        continue;
+      }
+
+      // 其他服务器错误（500, 503, 504）需要等待
       if (err.message && (
         err.message.includes('500') ||
-        err.message.includes('502') ||
         err.message.includes('503') ||
         err.message.includes('504')
       )) {
