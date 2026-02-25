@@ -272,19 +272,11 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   // 根据地域获取动态代理配置
-  let proxyConfig = getProxyConfig(isChina);
+  // 注意：502错误检测和代理切换已在前面处理（第247-257行）
+  let proxyConfig = currentProxyConfig || getProxyConfig(isChina);
   let dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
 
-  // 检查是否有代理切换
-  const fiftyTwoErrors = await chrome.storage.local.get(['proxyFiftyTwoErrors']) || { proxyFiftyTwoErrors: 0 };
-  if (fiftyTwoErrors.proxyFiftyTwoErrors >= 3) {
-    const switchedIsChina = !isChina;
-    proxyConfig = getProxyConfig(switchedIsChina);
-    dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
-    console.log(`[ProxyFetch] Switched proxy due to consecutive 502 errors: ${isChina ? 'China' : 'Overseas'} -> ${switchedIsChina ? 'China' : 'Overseas'}`);
-  } else {
-    console.log(`[ProxyFetch] Using proxy based on location: ${isChina ? 'China (domestic)' : 'Overseas'}, Proxy: ${dynamicProxyBase}`);
-  }
+  console.log(`[ProxyFetch] Using proxy: ${dynamicProxyBase}`);
 
   for (const strategy of strategies) {
     try {
