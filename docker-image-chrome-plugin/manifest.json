@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Docker 镜像一键下载器",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。",
   "permissions": [
     "activeTab",

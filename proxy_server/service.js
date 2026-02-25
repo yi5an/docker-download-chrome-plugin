@@ -724,8 +724,13 @@ app.get('/traffic-dashboard', (req, res) => {
 
 // ==================== 启动服务器 ====================
 const PORT = 7000;
-app.listen(PORT, () => {
-    console.log(`Proxy server running at http://localhost:${PORT}`);
+const HOST = '0.0.0.0'; // 监听所有接口，方便外网访问
+
+app.listen(PORT, HOST, () => {
+    console.log(`Proxy server running at http://0.0.0.0:${PORT}`);
+    console.log(`Server is accessible from:`);
+    console.log(`  - Local: http://0.0.0.0:${PORT}`);
+    console.log(`  - External: http://${require('os').hostname()}:${PORT}`);
     console.log(`\n网络配置:`);
     console.log(`  - 代理模式: ${USE_PROXY ? '已启用' : '已禁用（直连）'}`);
     if (USE_PROXY) {
