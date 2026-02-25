@@ -472,15 +472,11 @@ app.get('/proxy', async (req, res) => {
                 if (cached.contentType) res.setHeader('Content-Type', cached.contentType);
                 res.setHeader('Content-Length', cached.data.length);
 
-                console.log('[proxy] 缓存响应发送完成');
+                // 打印实际发送的响应头
+                console.log('[proxy] 缓存响应头:', JSON.stringify(res.getHeaders()));
 
-                // 写入并结束响应
-                try {
-                    return res.end(cached.data);
-                } catch (sendErr) {
-                    console.error('[proxy] 发送缓存响应时出错:', sendErr);
-                    res.status(500).send('Failed to send cached response');
-                }
+                // 结束响应
+                return res.end(cached.data);
             }
         } else if (shouldSkipBlobCache) {
             if (isBlobRequest) {
@@ -587,11 +583,11 @@ app.get('/proxy', async (req, res) => {
         if (contentType) res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', buffer.length);
 
-        console.log('[proxy] 响应头已设置，准备发送数据');
+        // 打印实际发送的响应头
+        console.log('[proxy] 响应头:', JSON.stringify(res.getHeaders()));
 
-        // 写入并结束响应
-        res.write(buffer);
-        res.end();
+        // 结束响应
+        res.end(buffer);
 
         const duration = Date.now() - startTime;
         console.log('[proxy] 请求完成，耗时:', duration, 'ms');
