@@ -14,7 +14,7 @@ const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob
 const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '200') * 1024 * 1024; // blob缓存大小限制（MB），默认200MB
 
 // 新增：内存和连接配置
-const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || '300') * 1000; // 请求超时（秒），默认300秒
+const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || '1800') * 1000; // 请求超时（秒），默认1800秒（30分钟）
 const MAX_CONCURRENT_REQUESTS = parseInt(process.env.MAX_CONCURRENT_REQUESTS || '20'); // 最大并发请求数，默认20
 const MAX_RESPONSE_SIZE = parseInt(process.env.MAX_RESPONSE_SIZE || '10000') * 1024 * 1024; // 最大响应大小限制（MB），默认10GB
 const STREAM_THRESHOLD = parseInt(process.env.STREAM_THRESHOLD || '50') * 1024 * 1024; // 流式处理阈值（MB），默认50MB
