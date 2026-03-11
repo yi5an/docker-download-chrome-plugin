@@ -196,6 +196,13 @@ async function downloadSingleLayer(image, layer, token) {
 }
 
 (function () {
+  const CONTENT_SCRIPT_SENTINEL = 'data-docker-download-content-script-initialized';
+  if (document.documentElement.hasAttribute(CONTENT_SCRIPT_SENTINEL)) {
+    console.log('[Docker Download Plugin] Content script already initialized, skipping duplicate bootstrap');
+    return;
+  }
+  document.documentElement.setAttribute(CONTENT_SCRIPT_SENTINEL, 'true');
+
   // SVG图标字符串
   const downloadSvg = `
     <svg t="1753283428326" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1493" width="20" height="20" style="vertical-align:middle;">
@@ -241,6 +248,40 @@ async function downloadSingleLayer(image, layer, token) {
     return archRows.length > 0;
   }
 
+  let injectionTimer = null;
+  let injectionObserver = null;
+  let pollingTimer = null;
+  let bootstrapTimer = null;
+
+  function isTagsPage() {
+    return /\/tags(\/|$|\?)/.test(location.pathname);
+  }
+
+  function scheduleInjection(reason = 'unknown', delay = 150) {
+    if (!isTagsPage()) return;
+    if (injectionTimer) {
+      clearTimeout(injectionTimer);
+    }
+    injectionTimer = setTimeout(() => {
+      console.log(`[Docker Download Plugin] Running scheduled injection (${reason})`);
+      injectDownloadButtons();
+    }, delay);
+  }
+
+  function whenBodyReady(callback, attempts = 60) {
+    if (document.body) {
+      callback();
+      return;
+    }
+
+    if (attempts <= 0) {
+      console.warn('[Docker Download Plugin] document.body not ready, skipping callback');
+      return;
+    }
+
+    setTimeout(() => whenBodyReady(callback, attempts - 1), 100);
+  }
+
   // 尝试注入按钮
   function tryInjectButtons() {
     // 直接尝试注入，不再提前检查
@@ -254,8 +295,23 @@ async function downloadSingleLayer(image, layer, token) {
 
   // 使用 MutationObserver 监听 DOM 变化
   function setupMutationObserver() {
-    const observer = new MutationObserver((mutations) => {
+    if (!document.body) {
+      console.log('[Docker Download Plugin] document.body not ready, delaying observer setup');
+      whenBodyReady(setupMutationObserver);
+      return null;
+    }
+
+    if (injectionObserver) {
+      injectionObserver.disconnect();
+    }
+
+    injectionObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        if (mutation.type === 'attributes' || mutation.type === 'characterData') {
+          scheduleInjection('mutation-update');
+          return;
+        }
+
         if (mutation.addedNodes.length > 0) {
           // 检查新添加的节点是否包含 tag 块
           for (const node of mutation.addedNodes) {
@@ -274,7 +330,7 @@ async function downloadSingleLayer(image, layer, token) {
 
               if (hasTagBlock || isTagBlock) {
                 console.log('[Docker Download Plugin] MutationObserver detected tag block, injecting buttons');
-                injectDownloadButtons();
+                scheduleInjection('mutation-add');
                 return;
               }
             }
@@ -284,19 +340,32 @@ async function downloadSingleLayer(image, layer, token) {
     });
 
     // 开始监听整个 document 的变化
-    observer.observe(document.body, {
+    injectionObserver.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: true,
+      characterData: true
     });
 
-    return observer;
+    return injectionObserver;
   }
 
   // 增强的等待函数（MutationObserver + 轮询双保险）
   function waitForTagTable(callback) {
+    if (!isTagsPage()) return;
+    if (!document.body) {
+      whenBodyReady(() => waitForTagTable(callback));
+      return;
+    }
+
     let injected = false;
     let attempts = 0;
     const maxAttempts = 120; // 120 次（120秒）
+
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
 
     // 立即尝试一次
     if (tryInjectButtons()) {
@@ -308,29 +377,29 @@ async function downloadSingleLayer(image, layer, token) {
     const observer = setupMutationObserver();
 
     // 同时使用轮询作为备用（MutationObserver 可能遗漏某些情况）
-    const interval = setInterval(() => {
+    pollingTimer = setInterval(() => {
       attempts++;
       console.log(`[Docker Download Plugin] Polling attempt ${attempts}/${maxAttempts}`);
 
       if (injected) {
-        clearInterval(interval);
-        observer.disconnect();
-        console.log('[Docker Download Plugin] Button injection completed');
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+        console.log('[Docker Download Plugin] Initial button injection completed; keeping observer active for later DOM updates');
         return;
       }
 
       if (tryInjectButtons()) {
         console.log('[Docker Download Plugin] Buttons injected via polling');
         injected = true;
-        clearInterval(interval);
-        observer.disconnect();
+        clearInterval(pollingTimer);
+        pollingTimer = null;
         return;
       }
 
       // 超过最大尝试次数
       if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        observer.disconnect();
+        clearInterval(pollingTimer);
+        pollingTimer = null;
         console.warn('[Docker Download Plugin] No tag blocks found after 120 seconds');
         console.log('[Docker Download Plugin] Page URL:', location.href);
         console.log('[Docker Download Plugin] Ready state:', document.readyState);
@@ -422,6 +491,7 @@ async function downloadSingleLayer(image, layer, token) {
   function injectDownloadButtons() {
     console.log('[Docker Download Plugin] Starting button injection');
     injectStyle();
+    const buttonCountBefore = document.querySelectorAll('.docker-download-btn').length;
 
     // 支持多种DockerHub页面结构
     // 1. 旧版: div[data-testid^="repotagsImageList-"]
@@ -431,31 +501,134 @@ async function downloadSingleLayer(image, layer, token) {
 
     console.log('[Docker Download Plugin] Found tag blocks:', tagBlocks.length, 'tables:', tables.length);
 
-    // 如果找到旧版tag blocks，使用旧逻辑
+    // 如果找到旧版tag blocks，先尝试旧逻辑，但不要提前 return。
+    // Docker Hub 首次进入时可能先渲染占位 tag block，再异步渲染真实表格。
     if (tagBlocks.length > 0) {
       tagBlocks.forEach((tagBlock, index) => {
         console.log(`[Docker Download Plugin] Processing tag block ${index + 1}:`, tagBlock);
         processTagBlock(tagBlock, 'latest');
       });
-      return;
     }
 
     // 新版页面结构：直接处理表格
     tables.forEach((table, index) => {
-      const hasArchCell = table.querySelector('td.osArchItem');
-      if (!hasArchCell) return;
+      const metadata = getTableColumnMetadata(table);
+      if (!metadata.hasArchColumn) return;
 
       console.log(`[Docker Download Plugin] Processing table ${index + 1} with architecture cells`);
 
       // 从URL获取镜像名称和tag
-      const { image, tag } = getImageAndTagFromURL();
+      const { image, tag: defaultTag } = getImageAndTagFromURL();
 
       // 遍历该表格下所有架构行
-      const rows = table.querySelectorAll('tr, .architecture-row');
+      const rows = table.querySelectorAll('tbody tr, tr, .architecture-row');
       rows.forEach(row => {
-        processArchCell(row, image, tag);
+        const tag = extractTagFromRow(row, metadata.tagColumnIndex, defaultTag);
+        const archCell = resolveArchCell(row, metadata.archColumnIndex);
+        processArchCell(row, image, tag, archCell);
       });
     });
+
+    const buttonCountAfter = document.querySelectorAll('.docker-download-btn').length;
+    console.log(`[Docker Download Plugin] Injection complete. Buttons before: ${buttonCountBefore}, after: ${buttonCountAfter}`);
+  }
+
+  function getTableColumnMetadata(table) {
+    const headerCells = Array.from(table.querySelectorAll('thead th, tr th'));
+    const headerTexts = headerCells.map(cell => cell.textContent.trim().toUpperCase());
+    const tagColumnIndex = headerTexts.findIndex(text => text.includes('TAG'));
+    const archColumnIndex = headerTexts.findIndex(text => text.includes('OS/ARCH'));
+    const hasArchColumn = archColumnIndex !== -1 || !!table.querySelector('td.osArchItem');
+
+    return {
+      tagColumnIndex,
+      archColumnIndex,
+      hasArchColumn
+    };
+  }
+
+  function extractTagFromRow(row, tagColumnIndex, defaultTag) {
+    if (!row || !row.querySelectorAll) return defaultTag;
+
+    const cells = Array.from(row.querySelectorAll('td'));
+    const tagCell = tagColumnIndex >= 0 ? cells[tagColumnIndex] : cells[0];
+    if (!tagCell) return defaultTag;
+
+    const tagLink = tagCell.querySelector('a');
+    const tagText = (tagLink ? tagLink.textContent : tagCell.textContent || '')
+      .split('\n')
+      .map(text => text.trim())
+      .find(Boolean);
+
+    return tagText || defaultTag;
+  }
+
+  function isArchitectureText(text) {
+    return /(linux|windows|darwin)\s*\/\s*[a-z0-9_/-]+/i.test(text) ||
+      /\b(amd64|arm64|arm\/v7|armhf|armel|386|i386|x86_64|ppc64le|s390x|riscv64)\b/i.test(text);
+  }
+
+  function normalizeRequestedArchitecture(archText) {
+    const normalized = (archText || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/^(linux|windows|darwin)\//, '');
+
+    if (!normalized) return '';
+
+    if (normalized.includes('amd64') || normalized.includes('x86_64') || normalized.includes('x86-64') || normalized === 'x64') {
+      return 'amd64';
+    }
+
+    if (normalized.includes('arm64') || normalized.includes('aarch64')) {
+      const variantMatch = normalized.match(/arm64\/(v\d+)/);
+      return variantMatch ? `arm64/${variantMatch[1]}` : 'arm64';
+    }
+
+    if (/^arm\/v\d+/.test(normalized)) {
+      return normalized.match(/^arm\/(v\d+)/) ? `arm/${normalized.match(/^arm\/(v\d+)/)[1]}` : 'arm';
+    }
+
+    if (normalized.includes('armhf') || normalized.includes('armel')) {
+      return 'arm';
+    }
+
+    if (normalized === 'arm' || normalized.includes('/arm')) {
+      return 'arm';
+    }
+
+    if (normalized.includes('386') || normalized.includes('i386') || normalized === 'x86') {
+      return '386';
+    }
+
+    if (normalized.includes('ppc64le')) {
+      return 'ppc64le';
+    }
+
+    if (normalized.includes('s390x')) {
+      return 's390x';
+    }
+
+    if (normalized.includes('riscv64')) {
+      return 'riscv64';
+    }
+
+    return normalized;
+  }
+
+  function resolveArchCell(row, archColumnIndex) {
+    if (!row || !row.querySelectorAll) return null;
+
+    const explicitArchCell = row.querySelector('td.osArchItem, .arch-cell');
+    if (explicitArchCell) return explicitArchCell;
+
+    const cells = Array.from(row.querySelectorAll('td'));
+    if (archColumnIndex >= 0 && cells[archColumnIndex]) {
+      return cells[archColumnIndex];
+    }
+
+    return cells.find(cell => isArchitectureText(cell.textContent.trim())) || null;
   }
 
   // 处理单个tag块（旧版页面结构）
@@ -479,46 +652,16 @@ async function downloadSingleLayer(image, layer, token) {
   }
 
   // 处理单个架构单元格
-  function processArchCell(row, image, tag) {
-    const archCell = row.querySelector('td.osArchItem, .arch-cell');
+  function processArchCell(row, image, tag, archCellOverride = null) {
+    const archCell = archCellOverride || row.querySelector('td.osArchItem, .arch-cell');
     if (!archCell) return;
     if (archCell.querySelector('.docker-download-btn')) return;
 
     // 提取架构信息，支持多种格式
     let archText = archCell.textContent.trim();
-    let arch = archText.includes('/') ? archText.split('/').pop() : archText;
-    const originalArch = arch; // 保存原始架构名称用于显示
-
-    // 标准化架构名称（完整映射表）
-    // AMD64/x86
-    if (arch.includes('amd64') || arch.includes('x86_64') || arch.includes('x86-64')) {
-      arch = 'amd64';
-    }
-    // ARM 64位
-    else if (arch.includes('arm64') || arch.includes('aarch64') || arch.includes('arm/v8')) {
-      arch = 'arm64';
-    }
-    // ARM 32位 (包括 v6, v7)
-    else if (arch.includes('arm') || arch.includes('v7') || arch.includes('arm/v7') ||
-             arch.includes('armhf') || arch.includes('armel') || arch.includes('v6')) {
-      arch = 'arm';
-    }
-    // 386
-    else if (arch.includes('386') || arch.includes('i386') || arch.includes('x86')) {
-      arch = '386';
-    }
-    // ppc64le
-    else if (arch.includes('ppc64le')) {
-      arch = 'ppc64le';
-    }
-    // s390x
-    else if (arch.includes('s390x')) {
-      arch = 's390x';
-    }
-    // riscv64
-    else if (arch.includes('riscv64')) {
-      arch = 'riscv64';
-    }
+    if (!isArchitectureText(archText)) return;
+    const originalArch = archText;
+    const arch = normalizeRequestedArchitecture(archText);
 
     console.log(`[Docker Download] Processing: ${image}:${tag} (${arch})`);
 
@@ -529,6 +672,7 @@ async function downloadSingleLayer(image, layer, token) {
 
     // 在按钮点击事件里，直接发起后台下载请求
     btn.onclick = function (e) {
+      e.preventDefault();
       e.stopPropagation();
       try {
         // 使用回调函数处理响应，避免 "Receiving end does not exist" 错误
@@ -572,23 +716,34 @@ async function downloadSingleLayer(image, layer, token) {
   console.log('[Docker Download Plugin] Pathname:', location.pathname);
   console.log('[Docker Download Plugin] Ready state:', document.readyState);
 
-  // 等待 DOM 加载完成后再尝试注入
+  function bootstrapInjection(reason) {
+    if (!isTagsPage()) return;
+    whenBodyReady(() => {
+      console.log(`[Docker Download Plugin] Bootstrapping injection (${reason})`);
+      setupMutationObserver();
+      scheduleInjection(`${reason}-immediate`, 0);
+      waitForTagTable(injectDownloadButtons);
+    });
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       console.log('[Docker Download Plugin] DOMContentLoaded fired');
-      // 短暂延迟确保 React 渲染完成
-      setTimeout(() => {
-        waitForTagTable(injectDownloadButtons);
-      }, 100);
+      bootstrapInjection('dom-content-loaded');
     });
   } else {
     // DOM 已经加载完成
     console.log('[Docker Download Plugin] DOM already loaded');
-    // 如果已经加载完成，给更多时间让 React 渲染（DockerHub 加载较慢）
-    setTimeout(() => {
-      waitForTagTable(injectDownloadButtons);
-    }, 2000);
+    bootstrapInjection('initial-load');
   }
+
+  window.addEventListener('load', () => {
+    bootstrapInjection('window-load');
+  });
+
+  window.addEventListener('pageshow', () => {
+    bootstrapInjection('pageshow');
+  });
 
   // 监听 SPA 页面跳转（DockerHub 为 SPA，需监听页面变化）
   let lastUrl = location.href;
@@ -596,9 +751,8 @@ async function downloadSingleLayer(image, layer, token) {
   // 1. 监听浏览器前进/后退
   window.addEventListener('popstate', () => {
     console.log('[Docker Download Plugin] Popstate event detected');
-    setTimeout(() => {
-      waitForTagTable(injectDownloadButtons);
-    }, 100);
+    scheduleInjection('popstate', 50);
+    waitForTagTable(injectDownloadButtons);
   });
 
   // 2. Hook history.pushState 和 history.replaceState
@@ -608,17 +762,15 @@ async function downloadSingleLayer(image, layer, token) {
   history.pushState = function(...args) {
     originalPushState.apply(this, args);
     console.log('[Docker Download Plugin] pushState called');
-    setTimeout(() => {
-      waitForTagTable(injectDownloadButtons);
-    }, 100);
+    scheduleInjection('pushstate', 50);
+    waitForTagTable(injectDownloadButtons);
   };
 
   history.replaceState = function(...args) {
     originalReplaceState.apply(this, args);
     console.log('[Docker Download Plugin] replaceState called');
-    setTimeout(() => {
-      waitForTagTable(injectDownloadButtons);
-    }, 100);
+    scheduleInjection('replacestate', 50);
+    waitForTagTable(injectDownloadButtons);
   };
 
   // 3. 使用 setInterval 作为备用方案（捕获其他可能的路由变化）
@@ -626,9 +778,41 @@ async function downloadSingleLayer(image, layer, token) {
     if (location.href !== lastUrl) {
       console.log('[Docker Download Plugin] URL changed (polling):', location.href);
       lastUrl = location.href;
-      waitForTagTable(injectDownloadButtons);
+      bootstrapInjection('url-polling');
     }
   }, 1000);
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const clickable = target.closest('button, a, span, div');
+    const text = clickable ? clickable.textContent.trim() : '';
+    if (/^\+\d+\s+more\.\.\.$/i.test(text) || /^\+\d+\s+more/i.test(text)) {
+      console.log('[Docker Download Plugin] Detected "more" expansion click');
+      scheduleInjection('expand-more', 150);
+      waitForTagTable(injectDownloadButtons);
+    }
+  }, true);
+
+  // 首次进入页面时，持续几秒重试启动逻辑，覆盖 Docker Hub 首屏水合较慢的情况。
+  if (!bootstrapTimer) {
+    let bootstrapAttempts = 0;
+    bootstrapTimer = setInterval(() => {
+      bootstrapAttempts++;
+      if (!isTagsPage()) return;
+      if (document.querySelector('.docker-download-btn')) {
+        clearInterval(bootstrapTimer);
+        bootstrapTimer = null;
+        return;
+      }
+      bootstrapInjection(`bootstrap-retry-${bootstrapAttempts}`);
+      if (bootstrapAttempts >= 10) {
+        clearInterval(bootstrapTimer);
+        bootstrapTimer = null;
+      }
+    }, 1000);
+  }
 
   // 监听来自background的下载任务状态更新
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
