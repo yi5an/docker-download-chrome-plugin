@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker 镜像一键下载器 - 安装引导</title>
+  <style>
+    :root {
+      --bg: #f4efe4;
+      --panel: rgba(255, 251, 245, 0.88);
+      --panel-strong: rgba(255, 255, 255, 0.94);
+      --text: #1d2433;
+      --muted: #5e6878;
+      --line: rgba(29, 36, 51, 0.12);
+      --accent: #0f766e;
+      --accent-soft: #d8f1eb;
+      --accent-deep: #0b4f55;
+      --ink: #132238;
+      --shadow: 0 28px 60px rgba(38, 50, 56, 0.14);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 34%),
+        radial-gradient(circle at 85% 15%, rgba(11, 79, 85, 0.12), transparent 24%),
+        linear-gradient(180deg, #f6f1e7 0%, #eef3f7 100%);
+      font-family: "Avenir Next", "PingFang SC", "Helvetica Neue", sans-serif;
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 34px 22px 48px;
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 360px);
+      gap: 22px;
+      border-radius: var(--radius-xl);
+      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(244,249,248,0.92));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      right: -80px;
+      top: -90px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(15, 118, 110, 0.18), rgba(15, 118, 110, 0));
+      pointer-events: none;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: clamp(38px, 5vw, 64px);
+      line-height: 0.96;
+      letter-spacing: -0.05em;
+      max-width: 9ch;
+      color: var(--ink);
+    }
+    h2 {
+      font-size: 19px;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      margin-bottom: 18px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.09);
+      color: var(--accent-deep);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .lead {
+      max-width: 48ch;
+      color: var(--muted);
+      margin-top: 18px;
+      line-height: 1.75;
+      font-size: 15px;
+    }
+    .hero-copy {
+      position: relative;
+      z-index: 1;
+    }
+    .link-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+    .quick-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid rgba(19, 34, 56, 0.08);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      box-shadow: 0 10px 24px rgba(19, 34, 56, 0.06);
+    }
+    .hero-side {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .signal {
+      padding: 18px 20px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(160deg, rgba(15, 118, 110, 0.14), rgba(15, 118, 110, 0.04));
+      border: 1px solid rgba(15, 118, 110, 0.15);
+    }
+    .signal .kicker {
+      color: var(--accent-deep);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .signal strong {
+      display: block;
+      margin-top: 10px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+    .signal p,
+    .note-card p {
+      margin-top: 10px;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .note-card {
+      padding: 18px 20px;
+      border-radius: var(--radius-lg);
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+    }
+    .note-card ul {
+      margin: 12px 0 0 18px;
+      padding: 0;
+      color: var(--muted);
+      line-height: 1.8;
+      font-size: 14px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      padding: 24px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .hero-card {
+      display: none;
+    }
+    .steps {
+      display: grid;
+      gap: 14px;
+    }
+    .step {
+      min-height: 172px;
+      border: 1px solid rgba(19, 34, 56, 0.08);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      background: var(--panel-strong);
+      box-shadow: 0 12px 28px rgba(19, 34, 56, 0.06);
+    }
+    .step-no {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .step strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+    .step p {
+      color: var(--muted);
+      line-height: 1.72;
+      font-size: 14px;
+    }
+    .callout {
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      background: linear-gradient(145deg, rgba(15,118,110,0.1), rgba(15,118,110,0.04));
+      border: 1px solid rgba(15,118,110,0.15);
+      color: var(--accent-deep);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .command-box {
+      margin-top: 16px;
+      background: linear-gradient(180deg, #102032, #08131f);
+      color: #d9e3ee;
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.75;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent-deep));
+      box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22);
+    }
+    .btn.secondary {
+      background: linear-gradient(90deg, #52606d, #334155);
+      box-shadow: 0 14px 28px rgba(51, 65, 85, 0.18);
+    }
+    .fine {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--accent);
+      min-height: 20px;
+    }
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .mini-card {
+      border-radius: var(--radius-md);
+      padding: 16px;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid var(--line);
+    }
+    .mini-card .mini-label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .mini-card .mini-value {
+      margin-top: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    @media (max-width: 920px) {
+      .hero, .layout, .steps-grid, .mini-grid { grid-template-columns: 1fr; }
+      h1 { max-width: none; }
+      .step { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">Docker Hub Helper</div>
+        <h1>从 tags 页直接拉镜像，不再手抄命令。</h1>
+        <p class="lead">
+          这个扩展做的事情很直接：在 Docker Hub 的 tags 页面找到正确架构，点一下按钮，生成可导入的 tar 包。
+          出问题时，再去弹出层看进度、错误和历史记录。
+        </p>
+        <div class="link-row">
+          <a class="quick-link" href="https://hub.docker.com/_/busybox/tags" target="_blank" rel="noreferrer">示例 tags 页面</a>
+          <a class="quick-link" href="popup/popup.html" target="_blank" rel="noreferrer">打开任务弹出层</a>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="signal">
+          <div class="kicker">公益项目</div>
+          <strong>临时救急优先，配置负担尽量低。</strong>
+          <p>目标是帮助开发和运维人员在没有完整开发环境时，先把镜像取下来、导进去、把问题处理掉。</p>
+        </div>
+        <div class="note-card">
+          <strong>节点贡献说明</strong>
+          <p>如果后续有广告收益，可以按实际流量向代理节点提供者支付一定费用。代理服务本身资源占用很低，主要消耗带宽和少量缓存磁盘。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <section class="panel">
+        <h2>如何使用插件</h2>
+        <div class="steps-grid">
+          <div class="step">
+            <div class="step-no">01</div>
+            <strong>1. 打开镜像的 tags 页面</strong>
+            <p>例如 `busybox`、`python` 或你自己的镜像仓库。在每个架构行右侧会出现下载按钮。</p>
+          </div>
+          <div class="step">
+            <div class="step-no">02</div>
+            <strong>2. 选对 tag 和架构再下载</strong>
+            <p>同一个 tag 可能有多个架构。先确认是 `amd64`、`arm64`、`arm/v7` 还是其它变体，再点击对应按钮。</p>
+          </div>
+          <div class="step">
+            <div class="step-no">03</div>
+            <strong>3. 在弹出层查看任务状态</strong>
+            <p>点击浏览器工具栏里的扩展图标，可以看到活动任务、下载历史、错误信息，也可以取消进行中的任务。</p>
+          </div>
+          <div class="step">
+            <div class="step-no">04</div>
+            <strong>4. 下载完成后直接导入</strong>
+            <p>插件输出的是 tar 包，下载完成后可以用 `docker load -i image.tar` 或 `ctr` / `nerdctl` 相关命令直接导入。</p>
+          </div>
+        </div>
+        <div class="mini-grid">
+          <div class="mini-card">
+            <div class="mini-label">认证</div>
+            <div class="mini-value">只有私有镜像或受限仓库时才需要填 Docker Hub 账号或令牌。</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-label">代理</div>
+            <div class="mini-value">只有本地无法稳定拉取，或者你要给更多人提供下载能力时，才需要代理节点。</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-label">结果</div>
+            <div class="mini-value">下载结果是 tar 包，不是镜像 ID。拿到文件后直接导入运行环境即可。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>可选：部署代理节点</h2>
+        <div class="callout">
+          如果你有公网 IP 云服务器，并愿意贡献一个轻量代理节点，可以直接执行下面的安装命令。插件本身不依赖你部署节点才能使用。
+        </div>
+        <div class="command-box" id="install-command"></div>
+        <div class="toolbar">
+          <button class="btn" id="copy-command">复制命令</button>
+          <button class="btn secondary" id="copy-script-url">复制脚本地址</button>
+        </div>
+        <div class="status" id="copy-status"></div>
+        <p class="fine">
+          命令说明：
+          `&lt;YOUR_PUBLIC_IP&gt;` 替换成你的云服务器公网 IP。脚本运行后会在安装依赖前要求确认，
+          然后用 pm2 管理代理服务进程。
+        </p>
+        <p class="fine">
+          公网部署前先放行云服务器的 `7001/tcp`。记录服务会反向校验
+          `http://&lt;YOUR_PUBLIC_IP&gt;:7001/health`，端口没开时注册会超时。
+        </p>
+        <p class="fine">
+          如果你的云服务器访问 Docker Hub 仍然需要上游代理，可以额外在执行时加上：
+          `USE_PROXY=true PROXY_URL=http://127.0.0.1:7890`
+        </p>
+        <p class="fine">
+          代理节点是可选能力，不影响插件基本使用。服务本身资源占用低，主要消耗出口带宽和少量磁盘缓存。
+        </p>
+      </section>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="welcome.js"></script>
+</body>
+</html>

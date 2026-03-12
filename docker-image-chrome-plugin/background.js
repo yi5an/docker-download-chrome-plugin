@@ -4,15 +4,16 @@
 console.log('[Background] Script starting...');
 
 // 检查依赖
-console.log('[Background] getProxyConfig type:', typeof getProxyConfig);
+console.log('[Background] getFallbackProxyConfig type:', typeof getFallbackProxyConfig);
 console.log('[Background] DEFAULT_PROXY_BASE:', DEFAULT_PROXY_BASE);
-console.log('[Background] TRACKING_URL:', TRACKING_URL);
+console.log('[Background] Proxy registry service:', typeof getProxyRegistryServiceUrl === 'function' ? getProxyRegistryServiceUrl() : 'unavailable');
 
-// DEFAULT_PROXY_BASE 和 TRACKING_URL 从 config.js 中获取
+// DEFAULT_PROXY_BASE 和代理记录服务配置从 config.js 中获取
 
 let tasks = [];
 let history = [];
 let isChinaIP = null;
+let geoInfo = null;
 
 // ==================== Token 缓存机制 ====================
 // Docker Registry token 通常只有 5 分钟有效期
@@ -27,7 +28,7 @@ const TOKEN_EXPIRY_MS = 4 * 60 * 1000; // 4 分钟（留 1 分钟缓冲）
  * @param {boolean} forceRefresh 是否强制刷新
  * @returns {Promise<string>} token
  */
-async function getCachedDockerToken(image, forceRefresh = false) {
+async function getCachedDockerToken(image, forceRefresh = false, proxyRoute = null, requestMeta = null) {
   const now = Date.now();
   const cached = tokenCache.get(image);
 
@@ -45,7 +46,7 @@ async function getCachedDockerToken(image, forceRefresh = false) {
 
   // 获取新 token（考虑是否使用认证）
   console.log(`[Token] Fetching new token for ${image} (forceRefresh: ${forceRefresh})`);
-  const token = await getDockerToken(image, useAuth);
+  const token = await getDockerToken(image, useAuth, proxyRoute, requestMeta);
 
   // 缓存 token
   tokenCache.set(image, {
@@ -62,7 +63,7 @@ async function getCachedDockerToken(image, forceRefresh = false) {
  * @param {string} image 镜像名
  * @returns {Promise<string>} 新 token
  */
-async function refreshToken(image) {
+async function refreshToken(image, proxyRoute = null, requestMeta = null) {
   console.log(`[Token] Refreshing token for ${image}`);
 
   // 检查是否配置了Docker Hub认证
@@ -71,7 +72,7 @@ async function refreshToken(image) {
   });
   const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
 
-  return await getCachedDockerToken(image, true);
+  return await getCachedDockerToken(image, true, proxyRoute, requestMeta);
 }
 
 // ==================== Service Worker 保活机制 ====================
@@ -134,34 +135,99 @@ async function checkGeoLocation() {
   try {
     const resp = await fetch('http://ip-api.com/json/');
     const data = await resp.json();
+    geoInfo = data;
     isChinaIP = (data.countryCode === 'CN');
     console.log(`[GeoCheck] Country: ${data.countryCode}, Use Proxy: ${isChinaIP}`);
   } catch (err) {
     console.warn('[GeoCheck] Failed to detect location, defaulting to proxy', err);
     isChinaIP = true; // 失败时默认使用代理以防万一
+    geoInfo = {
+      countryCode: 'CN',
+      country: 'Unknown'
+    };
   }
   return isChinaIP;
 }
 
 /**
- * 上报下载信息到后端
+ * 获取地理信息
  */
-async function reportDownload(image, tag, arch) {
-  // 如果 TRACKING_URL 为空，则跳过追踪
-  if (!TRACKING_URL) {
-    console.log(`[Track] Tracking disabled, skipping report for ${image}:${tag} (${arch})`);
-    return;
+async function getGeoInfo() {
+  if (!geoInfo) {
+    await checkGeoLocation();
+  }
+  return geoInfo || {};
+}
+
+function buildRegistryUrl(pathname) {
+  if (!PROXY_REGISTRY_CONFIG || typeof getProxyRegistryServiceUrl !== 'function') {
+    return '';
+  }
+  return `${getProxyRegistryServiceUrl()}${pathname}`;
+}
+
+async function requestBestProxy(downloadMeta) {
+  const geo = await getGeoInfo();
+  const registryUrl = buildRegistryUrl(PROXY_REGISTRY_CONFIG.select);
+  const fallbackProxy = getFallbackProxyConfig(await checkGeoLocation());
+
+  if (!registryUrl) {
+    return fallbackProxy;
   }
 
   try {
-    await fetch(TRACKING_URL, {
+    const url = new URL(registryUrl);
+    if (geo.countryCode) {
+      url.searchParams.set('countryCode', geo.countryCode);
+    }
+    if (downloadMeta.image) {
+      url.searchParams.set('image', downloadMeta.image);
+    }
+    if (downloadMeta.tag) {
+      url.searchParams.set('tag', downloadMeta.tag);
+    }
+    if (downloadMeta.arch) {
+      url.searchParams.set('arch', downloadMeta.arch);
+    }
+
+    const resp = await fetch(url.toString());
+    if (!resp.ok) {
+      throw new Error(`select proxy failed: ${resp.status}`);
+    }
+    const data = await resp.json();
+    if (data && data.proxy && data.proxy.baseUrl) {
+      return data.proxy;
+    }
+    throw new Error('proxy response missing baseUrl');
+  } catch (err) {
+    console.warn('[ProxyRegistry] Falling back to static proxy config:', err.message);
+    return fallbackProxy;
+  }
+}
+
+async function reportDownloadLifecycle(eventType, payload) {
+  if (!PROXY_REGISTRY_CONFIG || typeof getProxyRegistryServiceUrl !== 'function') {
+    return;
+  }
+
+  const endpointMap = {
+    start: PROXY_REGISTRY_CONFIG.downloadsStart,
+    complete: PROXY_REGISTRY_CONFIG.downloadsComplete,
+    fail: PROXY_REGISTRY_CONFIG.downloadsFail
+  };
+
+  const endpoint = endpointMap[eventType];
+  if (!endpoint) return;
+
+  try {
+    await fetch(buildRegistryUrl(endpoint), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image, tag, arch })
+      body: JSON.stringify(payload)
     });
-    console.log(`[Track] Reported: ${image}:${tag} (${arch})`);
+    console.log(`[Track] Reported ${eventType}: ${payload.image}:${payload.tag} (${payload.arch})`);
   } catch (err) {
-    console.error('[Track] Failed to report download:', err);
+    console.error(`[Track] Failed to report ${eventType}:`, err);
   }
 }
 
@@ -226,30 +292,25 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
   }
 }
 
-// 代理fetch通过中转服务器（Docker Registry 必须走代理以避免 CORS）
-async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false) {
-  // Docker Registry 相关请求必须走代理（避免 Cloudflare R2 的 CORS 问题）
+// 代理fetch通过中转服务器。
+// 默认优先使用用户当前网络直接访问 Docker Hub，仅在直连失败时回退到代理。
+async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false, strategyMode = 'auto', proxyRoute = null, requestMeta = null) {
   const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod\//.test(url);
-
-  // 添加 Cloudflare 相关域名匹配
   const isCloudflareRegistry = /production\.cloudflare\.docker\.com/.test(url);
 
   // 检测地域（会话级别缓存）
   const isChina = await checkGeoLocation();
 
-  let useProxy = isDockerRegistry || isCloudflareRegistry; // Docker Registry 和 Cloudflare 都强制代理
-  if (!isDockerRegistry) {
-    useProxy = isChina; // 国内IP使用代理，国外IP直连
-  }
+  let useProxy = isChina;
 
   // 检测是否需要切换代理（连续502错误时切换）
-  let currentProxyConfig = getProxyConfig(isChina);
+  let currentProxyConfig = proxyRoute || getFallbackProxyConfig(isChina);
   const fiftyTwoErrors = await chrome.storage.local.get(['proxyFiftyTwoErrors']) || { proxyFiftyTwoErrors: 0 };
 
   // 如果检测到连续3次502错误，尝试切换到另一个代理
   if (fiftyTwoErrors.proxyFiftyTwoErrors >= 3) {
     const newIsChina = !isChina;
-    currentProxyConfig = getProxyConfig(newIsChina);
+    currentProxyConfig = proxyRoute || getFallbackProxyConfig(newIsChina);
     console.log(`[ProxyFetch] Detected consecutive 502 errors, switching from ${isChina ? 'China' : 'Overseas'} to ${newIsChina ? 'China' : 'Overseas'} proxy`);
 
     // 重置计数
@@ -257,8 +318,14 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   }
 
   // 定义尝试顺序
-  // 对于 Docker Registry，只尝试代理，不尝试直连（避免 CORS 问题）
-  const strategies = (isDockerRegistry || isCloudflareRegistry) ? ['proxy'] : (useProxy ? ['proxy', 'direct'] : ['direct', 'proxy']);
+  // Docker Hub 相关请求也优先直连，只有直连失败才回退代理。
+  const preferDirect = isDockerRegistry || isCloudflareRegistry || !useProxy;
+  let strategies = preferDirect ? ['direct', 'proxy'] : ['proxy', 'direct'];
+  if (strategyMode === 'direct-only') {
+    strategies = ['direct'];
+  } else if (strategyMode === 'proxy-only') {
+    strategies = ['proxy'];
+  }
   const errors = [];
 
   // 如果需要跳过缓存，通过 HTTP header 通知代理服务器
@@ -268,15 +335,81 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     options.headers = options.headers || {};
     options.headers['X-Skip-Cache'] = 'true';
   }
+  if (requestMeta) {
+    options.headers = options.headers || {};
+    if (requestMeta.downloadId) options.headers['X-Download-Id'] = requestMeta.downloadId;
+    if (requestMeta.image) options.headers['X-Image'] = requestMeta.image;
+    if (requestMeta.tag) options.headers['X-Tag'] = requestMeta.tag;
+    if (requestMeta.arch) options.headers['X-Arch'] = requestMeta.arch;
+  }
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, Force Proxy: ${isDockerRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, StrategyMode: ${strategyMode}, DockerHubRequest: ${isDockerRegistry || isCloudflareRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   // 根据地域获取动态代理配置
   // 注意：502错误检测和代理切换已在前面处理（第247-257行）
-  let proxyConfig = currentProxyConfig || getProxyConfig(isChina);
-  let dynamicProxyBase = `${proxyConfig.base}${proxyConfig.proxy}`;
+  let proxyConfig = currentProxyConfig || getFallbackProxyConfig(isChina);
+  const proxyBaseUrl = proxyConfig.baseUrl || proxyConfig.base || '';
+  const proxyPath = proxyConfig.proxyPath || proxyConfig.proxy || '/proxy?url=';
+  let dynamicProxyBase = `${proxyBaseUrl}${proxyPath}`;
 
   console.log(`[ProxyFetch] Using proxy: ${dynamicProxyBase}`);
+
+  async function recordDirectFailure(errorMessage) {
+    if (!(isDockerRegistry || isCloudflareRegistry)) return;
+    try {
+      const existing = await chrome.storage.local.get(['directFetchFailures']);
+      const failures = existing.directFetchFailures || [];
+      failures.unshift({
+        url,
+        error: errorMessage,
+        timeout,
+        skipCache,
+        ts: Date.now()
+      });
+      if (failures.length > 20) failures.length = 20;
+      chrome.storage.local.set({ directFetchFailures: failures });
+    } catch (storageError) {
+      console.warn('[ProxyFetch] Failed to persist direct fetch failure:', storageError);
+    }
+  }
+
+  async function recordProxyUsage(strategy, targetUrl, status = 'ok') {
+    try {
+      const existing = await chrome.storage.local.get(['proxyUsageLog']);
+      const entries = existing.proxyUsageLog || [];
+      entries.unshift({
+        strategy,
+        url: targetUrl,
+        status,
+        ts: Date.now()
+      });
+      if (entries.length > 50) entries.length = 50;
+      chrome.storage.local.set({ proxyUsageLog: entries });
+    } catch (storageError) {
+      console.warn('[ProxyFetch] Failed to persist proxy usage log:', storageError);
+    }
+  }
+
+  async function tryDirectFallbackOnRateLimit() {
+    console.warn(`[ProxyFetch] Proxy rate limited for ${url}, trying DIRECT fallback`);
+    const resp = await fetchWithTimeout(url, options, timeout);
+
+    if (resp.ok) {
+      console.log('[ProxyFetch] DIRECT fallback success after proxy 429');
+      await recordProxyUsage('direct', url, 'fallback-after-429');
+      return await parseResponse(resp, responseType);
+    }
+
+    const errText = await resp.text().catch(() => resp.statusText);
+    if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
+      const error = new Error(`401 UNAUTHORIZED: ${errText}`);
+      error.status = 401;
+      error.isAuthError = true;
+      throw error;
+    }
+
+    throw new Error(`${resp.status} ${errText}`);
+  }
 
   for (const strategy of strategies) {
     try {
@@ -288,9 +421,14 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
 
         if (resp.ok) {
           console.log('[ProxyFetch] PROXY success');
+          await recordProxyUsage('proxy', actualProxyUrl);
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
+          if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && resp.status === 429) {
+            await recordProxyUsage('proxy', actualProxyUrl, 'rate-limited');
+            return await tryDirectFallbackOnRateLimit();
+          }
           // 检查是否是认证错误
           if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
             const error = new Error(`401 UNAUTHORIZED: ${errText}`);
@@ -306,6 +444,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
 
         if (resp.ok) {
           console.log('[ProxyFetch] DIRECT success');
+          await recordProxyUsage('direct', url);
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
@@ -321,6 +460,9 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
       }
     } catch (err) {
       console.warn(`[ProxyFetch] ${strategy.toUpperCase()} failed: ${err.message}`);
+      if (strategy === 'direct') {
+        await recordDirectFailure(err.message);
+      }
       // 如果是认证错误，立即抛出，不尝试其他策略
       if (err.isAuthError) {
         console.error(`[ProxyFetch] Authentication error, not retrying with other strategy`);
@@ -349,6 +491,38 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
 chrome.storage.local.get(['dockerDownloadTasks', 'dockerDownloadHistory'], data => {
   tasks = data.dockerDownloadTasks || [];
   history = data.dockerDownloadHistory || [];
+});
+
+function isDockerHubTagsUrl(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'hub.docker.com' && /\/tags(\/|$)/.test(parsed.pathname);
+  } catch (err) {
+    console.warn('[ContentScript] Failed to parse URL:', url, err);
+    return false;
+  }
+}
+
+async function ensureContentScriptInjected(tabId, url, reason = 'unknown') {
+  if (!tabId || !isDockerHubTagsUrl(url)) return;
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content-script.js']
+    });
+    console.log(`[ContentScript] Injected content scripts into tab ${tabId} (${reason}): ${url}`);
+  } catch (err) {
+    console.warn(`[ContentScript] Injection skipped/failed for tab ${tabId} (${reason}):`, err?.message || err);
+  }
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const targetUrl = changeInfo.url || tab.url;
+  if (changeInfo.status === 'complete' || changeInfo.url) {
+    ensureContentScriptInjected(tabId, targetUrl, `tabs.onUpdated:${changeInfo.status || 'url'}`);
+  }
 });
 
 function syncTasks() {
@@ -384,7 +558,7 @@ function findTask(image, tag, arch) {
   return tasks.find(t => taskKey(t.image, t.tag, t.arch) === taskKey(image, tag, arch));
 }
 
-async function getDockerToken(image, useAuth = false) {
+async function getDockerToken(image, useAuth = false, proxyRoute = null, requestMeta = null) {
   // 检查是否配置了Docker Hub认证
   const auth = await new Promise((resolve) => {
     chrome.storage.local.get(['dockerUsername', 'dockerPassword'], resolve);
@@ -415,7 +589,7 @@ async function getDockerToken(image, useAuth = false) {
     console.log(`[getDockerToken] Token URL: ${url.replace(image, '***')}`);
 
     try {
-      const data = await proxyFetch(url, { headers }, 'json');
+      const data = await proxyFetch(url, { headers }, 'json', FETCH_TIMEOUT, false, 'proxy-only', proxyRoute, requestMeta);
 
       if (!data || !data.token) {
         console.log(`[getDockerToken] No token in response for scope: ${scope}`);
@@ -432,7 +606,7 @@ async function getDockerToken(image, useAuth = false) {
       // 如果401且配置了认证，尝试不使用认证（可能镜像是公开的）
       if (err.isAuthError && useAuth) {
         console.log(`[getDockerToken] Auth failed, trying without auth...`);
-        return getDockerToken(image, false);
+        return getDockerToken(image, false, proxyRoute, requestMeta);
       }
     }
   }
@@ -445,45 +619,86 @@ async function getDockerToken(image, useAuth = false) {
  * @param {string} arch 输入的架构名称
  * @returns {string} 标准化的架构名称
  */
-function normalizeArchitecture(arch) {
-  // 架构别名映射表
-  const archAliases = {
-    // ARM 32位 变体
-    'v7': 'arm',
-    'arm/v7': 'arm',
-    'arm/v6': 'arm',
-    'armhf': 'arm',
-    'armel': 'arm',
-    'arm-32': 'arm',
+function parseArchitectureSpec(arch) {
+  const normalized = (arch || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/^(linux|windows|darwin)\//, '');
 
-    // ARM 64位 变体
-    'aarch64': 'arm64',
-    'arm64/v8': 'arm64',
-    'arm/v8': 'arm64',
-
-    // AMD64/x86 变体
-    'x86_64': 'amd64',
-    'x86-64': 'amd64',
-    'x64': 'amd64',
-
-    // 386 变体
-    'i386': '386',
-    'i686': '386',
-    'x86': '386',
-
-    // 其他架构保持不变
-    'ppc64le': 'ppc64le',
-    's390x': 's390x',
-    'riscv64': 'riscv64'
-  };
-
-  // 如果输入已经是标准架构，直接返回
-  if (['amd64', 'arm64', 'arm', '386', 'ppc64le', 's390x', 'riscv64'].includes(arch)) {
-    return arch;
+  if (!normalized) {
+    return {
+      original: arch,
+      normalized: 'amd64',
+      architecture: 'amd64',
+      variant: ''
+    };
   }
 
-  // 查找别名映射
-  return archAliases[arch] || arch;
+  if (normalized === 'x64' || normalized.includes('amd64') || normalized.includes('x86_64') || normalized.includes('x86-64')) {
+    return {
+      original: arch,
+      normalized: 'amd64',
+      architecture: 'amd64',
+      variant: ''
+    };
+  }
+
+  if (normalized.includes('aarch64') || normalized.includes('arm64')) {
+    const variantMatch = normalized.match(/arm64\/(v\d+)/);
+    const variant = variantMatch ? variantMatch[1] : '';
+    return {
+      original: arch,
+      normalized: variant ? `arm64/${variant}` : 'arm64',
+      architecture: 'arm64',
+      variant
+    };
+  }
+
+  if (/^arm\/v\d+/.test(normalized)) {
+    const variant = normalized.split('/')[1] || '';
+    return {
+      original: arch,
+      normalized: variant ? `arm/${variant}` : 'arm',
+      architecture: 'arm',
+      variant
+    };
+  }
+
+  if (['armhf', 'armel', 'arm-32', 'arm'].includes(normalized)) {
+    return {
+      original: arch,
+      normalized: 'arm',
+      architecture: 'arm',
+      variant: ''
+    };
+  }
+
+  if (['i386', 'i686', 'x86', '386'].includes(normalized)) {
+    return {
+      original: arch,
+      normalized: '386',
+      architecture: '386',
+      variant: ''
+    };
+  }
+
+  if (['ppc64le', 's390x', 'riscv64'].includes(normalized)) {
+    return {
+      original: arch,
+      normalized,
+      architecture: normalized,
+      variant: ''
+    };
+  }
+
+  return {
+    original: arch,
+    normalized,
+    architecture: normalized,
+    variant: ''
+  };
 }
 
 /**
@@ -493,10 +708,9 @@ function normalizeArchitecture(arch) {
  * @param {string} arch 架构（如 amd64、arm64、arm、v7）
  * @returns {Promise<object>} manifest对象
  */
-async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
-  // 规范化架构名称（处理 v7 → arm, arm/v7 → arm 等）
-  arch = normalizeArchitecture(arch);
-  console.log(`[fetchManifest] Normalized architecture: ${arch}`);
+async function fetchManifest(image, tagOrDigest, arch = 'amd64', proxyRoute = null, requestMeta = null) {
+  const requestedArch = parseArchitectureSpec(arch);
+  console.log(`[fetchManifest] Requested architecture: ${requestedArch.normalized}`);
 
   // 检查是否配置了Docker Hub认证
   const auth = await new Promise((resolve) => {
@@ -504,7 +718,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
   });
 
   const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
-  const token = await getDockerToken(image, useAuth);
+  const token = await getDockerToken(image, useAuth, proxyRoute, requestMeta);
 
   let url = `https://registry-1.docker.io/v2/${image}/manifests/${tagOrDigest}`;
 
@@ -514,39 +728,44 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
     }
-  }, 'json');
+  }, 'json', FETCH_TIMEOUT, false, 'proxy-only', proxyRoute, requestMeta);
 
   // 如果401且配置了认证，可能镜像是公开的，尝试不使用认证
   if (manifest && manifest.error && manifest.error.toLowerCase().includes('unauthorized') && useAuth) {
     console.log('[fetchManifest] Auth failed, trying without auth...');
-    const publicToken = await getDockerToken(image, false);
+    const publicToken = await getDockerToken(image, false, proxyRoute, requestMeta);
     manifest = await proxyFetch(url, {
       headers: {
         'Authorization': `Bearer ${publicToken}`,
         'Accept': 'application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json'
       }
-    }, 'json');
+    }, 'json', FETCH_TIMEOUT, false, 'proxy-only', proxyRoute, requestMeta);
   }
   let tryCount = 0;
   while (!manifest.layers && manifest.manifests && tryCount < 5) {
     // 使用更灵活的匹配逻辑
     const found = manifest.manifests.find(m => {
       if (!m.platform) return false;
+      const manifestArch = (m.platform.architecture || '').toLowerCase();
+      const manifestVariant = (m.platform.variant || '').toLowerCase();
 
-      // 优先精确匹配 architecture
-      if (m.platform.architecture === arch) return true;
-
-      // 特殊处理：如果请求 arm，也匹配 arm/v7 等
-      if (arch === 'arm' && m.platform.architecture === 'arm') {
-        // 检查 variant 是否兼容（v6, v7 等）
-        const variant = m.platform.variant || '';
-        if (!variant || ['v6', 'v7', 'v5'].includes(variant)) {
-          console.log(`[fetchManifest] Found arm with variant: ${variant}`);
-          return true;
-        }
+      if (manifestArch !== requestedArch.architecture) {
+        return false;
       }
 
-      return false;
+      if (requestedArch.variant) {
+        return manifestVariant === requestedArch.variant;
+      }
+
+      if (requestedArch.architecture === 'arm') {
+        if (!manifestVariant || ['v5', 'v6', 'v7'].includes(manifestVariant)) {
+          console.log(`[fetchManifest] Found arm with compatible variant: ${manifestVariant || 'none'}`);
+          return true;
+        }
+        return false;
+      }
+
+      return true;
     });
 
     if (!found) {
@@ -554,7 +773,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
       const availableArchs = manifest.manifests
         .map(m => m.platform ? `${m.platform.architecture}${m.platform.variant ? '/' + m.platform.variant : ''}` : 'unknown')
         .join(', ');
-      throw new Error(`未找到匹配架构的manifest: ${arch} (可用架构: ${availableArchs})`);
+      throw new Error(`未找到匹配架构的manifest: ${requestedArch.normalized} (可用架构: ${availableArchs})`);
     }
 
     url = `https://registry-1.docker.io/v2/${image}/manifests/${found.digest}`;
@@ -563,7 +782,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
         'Authorization': `Bearer ${token}`,
         'Accept': found.mediaType || 'application/vnd.docker.distribution.manifest.v2+json'
       }
-    }, 'json');
+    }, 'json', FETCH_TIMEOUT, false, 'proxy-only', proxyRoute, requestMeta);
     tryCount++;
   }
   if (!manifest.layers) throw new Error('manifest.layers is not iterable，实际值：' + JSON.stringify(manifest));
@@ -578,7 +797,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64') {
  * @param {Function} progressCallback 进度回调函数
  * @returns {Promise<ArrayBuffer>} layer的二进制数据
  */
-async function downloadSingleLayer(image, layer, token, progressCallback) {
+async function downloadSingleLayer(image, layer, token, progressCallback, proxyRoute = null, requestMeta = null) {
   const url = `https://registry-1.docker.io/v2/${image}/blobs/${layer.digest}`;
   const timeout = 300000; // 大文件下载使用 5 分钟超时
   const shortDigest = layer.digest.substring(7, 19);
@@ -595,7 +814,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const currentToken = await getCachedDockerToken(image);
+      const currentToken = await getCachedDockerToken(image, false, proxyRoute, requestMeta);
       console.log(`[Download] Attempt ${attempt + 1}/${maxRetries} downloading layer ${shortDigest}...`);
       console.log(`[Download] Token length: ${currentToken.length}`);
 
@@ -613,7 +832,9 @@ async function downloadSingleLayer(image, layer, token, progressCallback) {
       }
 
       const startTime = Date.now();
-      const data = await proxyFetch(url, { headers }, 'arrayBuffer', timeout, skipCache);
+      const strategyMode = 'proxy-only';
+      console.log(`[Download] Layer ${shortDigest} using strategy mode: ${strategyMode}`);
+      const data = await proxyFetch(url, { headers }, 'arrayBuffer', timeout, skipCache, strategyMode, proxyRoute, requestMeta);
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
 
@@ -704,12 +925,15 @@ async function runDownloadTask(task) {
   task.startTime = Date.now();
   syncTasks();
   try {
-    // 上報下載信息
-    reportDownload(task.image, task.tag, task.arch);
-
     console.log('[Docker Download Plugin] Getting token for:', task.image);
     // 使用缓存的 token 获取函数，会自动检查过期
-    let token = await getCachedDockerToken(task.image);
+    const requestMeta = {
+      downloadId: task.downloadId,
+      image: task.image,
+      tag: task.tag,
+      arch: task.arch
+    };
+    let token = await getCachedDockerToken(task.image, false, task.proxyRoute, requestMeta);
     const layersData = [];
     const downloadedLayers = [];
     let parentId = '';
@@ -718,7 +942,7 @@ async function runDownloadTask(task) {
     console.log('[Docker Download Plugin] Downloading config file...');
     console.log('[Docker Download Plugin] Config digest:', task.manifest.config.digest);
     try {
-      const configBuf = await downloadSingleLayer(task.image, { digest: task.manifest.config.digest }, token);
+      const configBuf = await downloadSingleLayer(task.image, { digest: task.manifest.config.digest }, token, null, task.proxyRoute, requestMeta);
       downloadedLayers.push({
         layerData: configBuf,
         layerId: 'config',
@@ -742,7 +966,7 @@ async function runDownloadTask(task) {
       syncTasks();
 
       // 在下载每个 layer 前，检查 token 是否即将过期，主动刷新
-      token = await getCachedDockerToken(task.image);
+      token = await getCachedDockerToken(task.image, false, task.proxyRoute, requestMeta);
       console.log('[Docker Download Plugin] Token refreshed before downloading layer:', task.layers[i].digest.substring(0, 16));
 
       // 向content-script发送下载进度更新
@@ -758,7 +982,7 @@ async function runDownloadTask(task) {
 
       // 下载单层（内部已包含完整的重试机制）
       try {
-        const buf = await downloadSingleLayer(task.image, task.layers[i], token);
+        const buf = await downloadSingleLayer(task.image, task.layers[i], token, null, task.proxyRoute, requestMeta);
 
         // 生成layer ID
         const layerId = await sha256Hash(`${parentId}\n${task.layers[i].digest}\n`);
@@ -830,7 +1054,8 @@ async function runDownloadTask(task) {
       const tarBlob = await packToTar(downloadedLayers, task.manifest, task.image, task.tag);
 
       // 保存文件
-      const filename = `${task.image.replace(/\//g, '-')}-${task.tag}-${task.arch}.tar`;
+      const safeArch = (task.arch || 'amd64').replace(/\//g, '-');
+      const filename = `${task.image.replace(/\//g, '-')}-${task.tag}-${safeArch}.tar`;
 
       // 方案修改：SW无法使用URL.createObjectURL，且Data URL受限于字符串长度。
       // 使用IndexedDB存储Blob，然后打开一个扩展页面(download.html)来读取Blob并触发下载。
@@ -854,6 +1079,16 @@ async function runDownloadTask(task) {
         task.status = 'completed';
         task.endTime = Date.now();
         moveTaskToHistory(task);
+        reportDownloadLifecycle('complete', {
+          downloadId: task.downloadId,
+          image: task.image,
+          tag: task.tag,
+          arch: task.arch,
+          size: task.manifest.layers.reduce((sum, layer) => sum + Number(layer.size || 0), 0),
+          proxyId: task.proxyRoute?.proxyId || '',
+          selectedProxy: task.proxyRoute || null,
+          completedAt: new Date().toISOString()
+        });
 
         // 向content-script发送下载成功消息 (打包完成)
         chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -892,6 +1127,17 @@ async function runDownloadTask(task) {
     task.status = 'failed';
     task.errorMessage = err.message || '下载过程中发生未知错误';
     moveTaskToHistory(task);
+    reportDownloadLifecycle('fail', {
+      downloadId: task.downloadId,
+      image: task.image,
+      tag: task.tag,
+      arch: task.arch,
+      size: task.manifest?.layers?.reduce((sum, layer) => sum + Number(layer.size || 0), 0) || 0,
+      proxyId: task.proxyRoute?.proxyId || '',
+      selectedProxy: task.proxyRoute || null,
+      failedAt: new Date().toISOString(),
+      error: task.errorMessage
+    });
   } finally {
     // 无论成功或失败，都要停止保活机制
     stopKeepAlive();
@@ -911,6 +1157,21 @@ async function sha256Hash(data) {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason !== 'install') {
+    return;
+  }
+
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('welcome.html'),
+    active: true
+  }, () => {
+    if (chrome.runtime.lastError) {
+      console.warn('[Docker Download Plugin] Failed to open welcome page:', chrome.runtime.lastError.message);
+    }
+  });
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('[Docker Download Plugin] Received message:', msg);
 
@@ -924,8 +1185,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     // 1. 立即创建一个“准备中”的任务，确保用户在弹出层能立即看到
     const taskId = Date.now() + Math.random();
+    const downloadId = crypto.randomUUID();
     const task = {
       id: taskId,
+      downloadId,
       image: msg.image, tag: msg.tag, arch: msg.arch,
       total: 0,
       finished: 0, running: 0, pending: 0,
@@ -946,8 +1209,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     }
 
-    // 3. 异步获取清单并开始下载
-    fetchManifest(msg.image, msg.tag, msg.arch).then(manifest => {
+    // 3. 异步选择代理、上报并获取清单
+    Promise.all([requestBestProxy({ image: msg.image, tag: msg.tag, arch: msg.arch }), getGeoInfo()]).then(async ([proxyRoute, geo]) => {
+      task.proxyRoute = proxyRoute;
+      task.updatedAt = Date.now();
+      syncTasks();
+
+      await reportDownloadLifecycle('start', {
+        downloadId,
+        image: msg.image,
+        tag: msg.tag,
+        arch: msg.arch,
+        sourceUrl: sender?.tab?.url || '',
+        size: 0,
+        proxyId: proxyRoute?.proxyId || '',
+        selectedProxy: proxyRoute || null,
+        clientGeo: {
+          countryCode: geo.countryCode || '',
+          country: geo.country || '',
+          region: geo.regionName || '',
+          city: geo.city || ''
+        },
+        pluginVersion: chrome.runtime.getManifest().version,
+        startedAt: new Date().toISOString()
+      });
+
+      return fetchManifest(msg.image, msg.tag, msg.arch, proxyRoute, {
+        downloadId,
+        image: msg.image,
+        tag: msg.tag,
+        arch: msg.arch
+      });
+    }).then(manifest => {
       console.log('[Docker Download Plugin] Manifest fetched, updating task');
       task.status = 'downloading';
       task.manifest = manifest;
@@ -971,6 +1264,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       task.status = 'failed';
       task.errorMessage = `获取清单失败: ${err.message}`;
       moveTaskToHistory(task);
+      reportDownloadLifecycle('fail', {
+        downloadId,
+        image: msg.image,
+        tag: msg.tag,
+        arch: msg.arch,
+        size: 0,
+        proxyId: task.proxyRoute?.proxyId || '',
+        selectedProxy: task.proxyRoute || null,
+        failedAt: new Date().toISOString(),
+        error: task.errorMessage
+      });
     });
 
     sendResponse({ ok: true });

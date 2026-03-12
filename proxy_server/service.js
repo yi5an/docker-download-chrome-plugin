@@ -6,8 +6,17 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const app = express();
 
 // 代理配置（可通过环境变量控制）
+const SERVICE_PORT = parseInt(process.env.PORT || '7001', 10);
 const USE_PROXY = process.env.USE_PROXY === 'true';
 const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
+const REGISTRY_SERVICE_URL = process.env.REGISTRY_SERVICE_URL || 'http://127.0.0.1:3000';
+const PROXY_NODE_ID = process.env.PROXY_NODE_ID || cryptoSafeRandomId('proxy');
+const PROXY_PUBLIC_BASE_URL = process.env.PROXY_PUBLIC_BASE_URL || `http://127.0.0.1:${SERVICE_PORT}`;
+const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '60000', 10);
+const SPEED_TEST_INTERVAL_MS = parseInt(process.env.SPEED_TEST_INTERVAL_MS || '300000', 10);
+const SPEED_TEST_TARGET = process.env.SPEED_TEST_TARGET || 'https://registry-1.docker.io/v2/';
+const SPEED_TEST_IMAGE = process.env.SPEED_TEST_IMAGE || 'library/busybox';
+const SPEED_TEST_TAG = process.env.SPEED_TEST_TAG || 'latest';
 
 // 缓存配置（可通过环境变量控制）
 const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob，只有明确设置为false时才禁用
@@ -22,6 +31,9 @@ const STREAM_THRESHOLD = parseInt(process.env.STREAM_THRESHOLD || '50') * 1024 *
 console.log(`[Config] Blob caching: ${CACHE_BLOB ? 'ENABLED' : 'DISABLED'}, Max size: ${(CACHE_BLOB_MAX_SIZE / 1024 / 1024).toFixed(2)} MB`);
 console.log(`[Config] Request timeout: ${REQUEST_TIMEOUT / 1000}s, Max concurrent: ${MAX_CONCURRENT_REQUESTS}`);
 console.log(`[Config] Stream threshold: ${(STREAM_THRESHOLD / 1024 / 1024).toFixed(2)} MB, Max response: ${(MAX_RESPONSE_SIZE / 1024 / 1024).toFixed(2)} MB`);
+console.log(`[Config] Proxy registry service: ${REGISTRY_SERVICE_URL}`);
+console.log(`[Config] Proxy node id: ${PROXY_NODE_ID}`);
+console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL}`);
 
 // 根据环境变量决定是否使用代理
 const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
@@ -48,6 +60,265 @@ setInterval(() => {
 const fs = require('fs');
 const path = require('path');
 const { AbortController } = require('node-abort-controller');
+
+process.on('uncaughtException', (error) => {
+    console.error('[Fatal] uncaughtException:', error && error.stack ? error.stack : error);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[Fatal] unhandledRejection:', reason && reason.stack ? reason.stack : reason);
+});
+
+function cryptoSafeRandomId(prefix) {
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const proxyRegistryState = {
+    registered: false,
+    lastHeartbeatAt: null,
+    location: {
+        countryCode: '',
+        country: '',
+        region: '',
+        city: ''
+    },
+    lastSpeedTest: {
+        bandwidthMbps: 0,
+        latencyMs: 0,
+        testedAt: null,
+        target: SPEED_TEST_TARGET
+    },
+    transferSamples: []
+};
+
+let heartbeatTimer = null;
+
+async function postToRegistry(pathname, payload) {
+    try {
+        const response = await fetch(`${REGISTRY_SERVICE_URL}${pathname}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            timeout: 15000
+        });
+        if (!response.ok) {
+            const text = await response.text().catch(() => response.statusText);
+            throw new Error(`${response.status} ${text}`);
+        }
+        return await response.json().catch(() => ({}));
+    } catch (error) {
+        console.error(`[Registry] POST ${pathname} failed:`, error.message);
+        throw error;
+    }
+}
+
+async function runSpeedTest() {
+    const startedAt = Date.now();
+    try {
+        const tokenResponse = await fetch(`https://auth.docker.io/token?service=registry.docker.io&scope=repository:${SPEED_TEST_IMAGE}:pull`, {
+            method: 'GET',
+            timeout: 15000,
+            agent: proxyAgent || undefined
+        });
+        const tokenPayload = await tokenResponse.json();
+        const token = tokenPayload.token || tokenPayload.access_token || '';
+        const manifestStartedAt = Date.now();
+        const manifestResponse = await fetch(`https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`, {
+            method: 'GET',
+            timeout: 15000,
+            agent: proxyAgent || undefined,
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.docker.distribution.manifest.list.v2+json'
+            }
+        });
+        const manifestBuffer = await manifestResponse.buffer();
+        const durationMs = Math.max(Date.now() - manifestStartedAt, 1);
+        const manifestThroughput = (manifestBuffer.length * 8) / durationMs / 1000;
+
+        const sampleBandwidths = proxyRegistryState.transferSamples.map(sample => sample.mbps).filter(value => Number.isFinite(value) && value > 0);
+        if (manifestThroughput > 0) {
+            sampleBandwidths.push(manifestThroughput);
+        }
+        const averageBandwidth = sampleBandwidths.length
+            ? sampleBandwidths.reduce((sum, value) => sum + value, 0) / sampleBandwidths.length
+            : 0;
+        const bandwidthMbps = Number(Math.max(averageBandwidth, manifestThroughput > 0 ? 0.01 : 0).toFixed(2));
+
+        proxyRegistryState.lastSpeedTest = {
+            bandwidthMbps,
+            latencyMs: durationMs,
+            testedAt: new Date().toISOString(),
+            target: `https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`
+        };
+    } catch (error) {
+        proxyRegistryState.lastSpeedTest = {
+            bandwidthMbps: proxyRegistryState.lastSpeedTest.bandwidthMbps || 0,
+            latencyMs: proxyRegistryState.lastSpeedTest.latencyMs || 0,
+            testedAt: new Date().toISOString(),
+            target: proxyRegistryState.lastSpeedTest.target || SPEED_TEST_TARGET
+        };
+        console.warn('[Registry] Speed test failed:', error.message);
+    }
+
+    return proxyRegistryState.lastSpeedTest;
+}
+
+async function lookupLocation() {
+    const hostname = new URL(PROXY_PUBLIC_BASE_URL).hostname;
+    const providers = [
+        {
+            name: 'ip-api',
+            url: `http://ip-api.com/json/${encodeURIComponent(hostname)}?lang=zh-CN`,
+            parse(payload) {
+                if (payload && payload.status === 'success') {
+                    return {
+                        countryCode: payload.countryCode || '',
+                        country: payload.country || '',
+                        region: payload.regionName || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        },
+        {
+            name: 'ipwho.is',
+            url: `https://ipwho.is/${encodeURIComponent(hostname)}`,
+            parse(payload) {
+                if (payload && payload.success !== false) {
+                    return {
+                        countryCode: payload.country_code || '',
+                        country: payload.country || '',
+                        region: payload.region || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        },
+        {
+            name: 'ipapi.co',
+            url: `https://ipapi.co/${encodeURIComponent(hostname)}/json/`,
+            parse(payload) {
+                if (payload && !payload.error) {
+                    return {
+                        countryCode: payload.country_code || '',
+                        country: payload.country_name || '',
+                        region: payload.region || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        }
+    ];
+
+    try {
+        for (const provider of providers) {
+            try {
+                const response = await fetch(provider.url, {
+                    timeout: 8000
+                });
+                const payload = await response.json();
+                const location = provider.parse(payload);
+                if (location && (location.countryCode || location.country || location.region || location.city)) {
+                    proxyRegistryState.location = location;
+                    return proxyRegistryState.location;
+                }
+            } catch (error) {
+                console.warn(`[Registry] ${provider.name} location lookup failed:`, error.message);
+            }
+        }
+    } catch (error) {
+        console.warn('[Registry] Location lookup failed:', error.message);
+    }
+
+    return proxyRegistryState.location;
+}
+
+async function registerProxyNode() {
+    const [speedTest, location] = await Promise.all([runSpeedTest(), lookupLocation()]);
+    const result = await postToRegistry('/api/proxies/register', {
+        proxyId: PROXY_NODE_ID,
+        name: PROXY_NODE_ID,
+        baseUrl: PROXY_PUBLIC_BASE_URL,
+        proxyPath: '/proxy?url=',
+        trackPath: '/track',
+        status: 'online',
+        connectivity: 'reachable',
+        provider: USE_PROXY ? `upstream:${PROXY_URL}` : 'direct',
+        location,
+        speedTest,
+        capabilities: {
+            blobCache: CACHE_BLOB,
+            maxConcurrentRequests: MAX_CONCURRENT_REQUESTS,
+            maxResponseSize: MAX_RESPONSE_SIZE
+        }
+    });
+    proxyRegistryState.registered = true;
+    console.log('[Registry] Proxy node registered:', result.validation?.checkedUrl || PROXY_PUBLIC_BASE_URL);
+}
+
+async function sendHeartbeat(options = {}) {
+    const includeSpeedTest = options.includeSpeedTest !== false;
+    const speedTest = includeSpeedTest ? await runSpeedTest() : proxyRegistryState.lastSpeedTest;
+    const totalBytes = trafficStats.totalBytes;
+    const heartbeat = await postToRegistry('/api/proxies/heartbeat', {
+        proxyId: PROXY_NODE_ID,
+        status: 'online',
+        connectivity: 'reachable',
+        location: proxyRegistryState.location,
+        speedTest,
+        traffic: {
+            bytesIn: totalBytes,
+            bytesOut: totalBytes,
+            totalBytes,
+            requestCount: trafficStats.totalRequests,
+            lastReportedAt: new Date().toISOString()
+        },
+        health: {
+            healthy: true,
+            successRate: trafficStats.totalRequests > 0
+                ? Number(((trafficStats.cacheHits + trafficStats.cacheMisses) / trafficStats.totalRequests).toFixed(2))
+                : 1,
+            failureCount: 0,
+            lastError: ''
+        },
+        trafficSnapshot: {
+            bytesIn: totalBytes,
+            bytesOut: totalBytes,
+            totalBytes,
+            requestCount: trafficStats.totalRequests,
+            timestamp: new Date().toISOString()
+        },
+        lastHeartbeatAt: new Date().toISOString()
+    });
+    proxyRegistryState.lastHeartbeatAt = heartbeat?.proxy?.lastHeartbeatAt || new Date().toISOString();
+}
+
+function scheduleHeartbeat(delayMs = 2000) {
+    if (heartbeatTimer) {
+        clearTimeout(heartbeatTimer);
+    }
+
+    heartbeatTimer = setTimeout(() => {
+        sendHeartbeat({ includeSpeedTest: false }).catch(err => {
+            console.warn('[Registry] Scheduled heartbeat failed:', err.message);
+        });
+    }, delayMs);
+}
+
+async function reportProxyDownloadEvent(payload) {
+    try {
+        await postToRegistry('/api/proxies/download-events', {
+            proxyId: PROXY_NODE_ID,
+            ...payload
+        });
+    } catch (error) {
+        console.warn('[Registry] Failed to report proxy download event:', error.message);
+    }
+}
 
 // ==================== 连接管理和并发控制 ====================
 const activeRequests = new Set();
@@ -103,6 +374,19 @@ const trafficStats = {
     startTime: new Date().toISOString()
 };
 
+const recentProxyRequests = [];
+
+function appendRecentProxyRequest(entry) {
+    recentProxyRequests.unshift({
+        id: cryptoSafeRandomId('req'),
+        timestamp: new Date().toISOString(),
+        ...entry
+    });
+    if (recentProxyRequests.length > 100) {
+        recentProxyRequests.length = 100;
+    }
+}
+
 function recordTraffic(url, bytes, fromCache) {
     const now = new Date();
     const date = now.toISOString().split('T')[0];
@@ -146,6 +430,30 @@ function recordTraffic(url, bytes, fromCache) {
         fs.appendFileSync(TRAFFIC_LOG_PATH, JSON.stringify(logEntry) + '\n');
     } catch (err) {
         console.error('[Traffic] Failed to write log:', err);
+    }
+
+    scheduleHeartbeat();
+}
+
+function recordTransferSample(bytes, durationMs) {
+    if (!bytes || !durationMs || durationMs <= 0) {
+        return;
+    }
+
+    const mbps = Number((((bytes * 8) / durationMs) / 1000).toFixed(2));
+    if (!Number.isFinite(mbps) || mbps <= 0) {
+        return;
+    }
+
+    proxyRegistryState.transferSamples.unshift({
+        mbps,
+        bytes,
+        durationMs,
+        timestamp: new Date().toISOString()
+    });
+
+    if (proxyRegistryState.transferSamples.length > 12) {
+        proxyRegistryState.transferSamples.length = 12;
     }
 }
 
@@ -451,7 +759,7 @@ app.use((req, res, next) => {
     console.log(`[Request] Received ${req.method} ${req.path} from ${clientIP}`);
 
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Skip-Cache, X-Download-Id, X-Image, X-Tag, X-Arch');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Credentials', 'true');
 
@@ -461,6 +769,16 @@ app.use((req, res, next) => {
         return;
     }
     next();
+});
+
+app.get('/health', (req, res) => {
+    res.json({
+        ok: true,
+        service: 'docker-download-proxy',
+        proxyNodeId: PROXY_NODE_ID,
+        registered: proxyRegistryState.registered,
+        now: new Date().toISOString()
+    });
 });
 
 // ==================== 代理 GET 请求（带缓存） ====================
@@ -478,6 +796,13 @@ app.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url;
     const skipCache = req.query._nocache || req.headers['x-skip-cache'] === 'true';
     const startTime = Date.now();
+    const downloadMetadata = {
+        downloadId: req.headers['x-download-id'] || '',
+        image: req.headers['x-image'] || '',
+        tag: req.headers['x-tag'] || '',
+        arch: req.headers['x-arch'] || '',
+        targetUrl: targetUrl || ''
+    };
 
     // 检查并发限制
     if (activeRequests.size >= MAX_CONCURRENT_REQUESTS) {
@@ -562,6 +887,23 @@ app.get('/proxy', async (req, res) => {
 
                 // 记录流量（来自缓存）
                 recordTraffic(cleanUrl, cached.size, true);
+                if (downloadMetadata.downloadId) {
+                    reportProxyDownloadEvent({
+                        ...downloadMetadata,
+                        status: 'cache-hit',
+                        fromCache: true,
+                        bytes: cached.size
+                    });
+                }
+                appendRecentProxyRequest({
+                    url: cleanUrl,
+                    type: isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'),
+                    status: 200,
+                    fromCache: true,
+                    bytes: cached.size,
+                    durationMs: Date.now() - startTime
+                });
+                recordTransferSample(cached.size, Date.now() - startTime);
 
                 console.log('[proxy] 从缓存发送响应');
 
@@ -705,6 +1047,23 @@ app.get('/proxy', async (req, res) => {
                 res.end();
                 responseSent = true;
                 recordTraffic(cleanUrl, bytesWritten, false);
+                if (downloadMetadata.downloadId) {
+                    reportProxyDownloadEvent({
+                        ...downloadMetadata,
+                        status: 'completed',
+                        fromCache: false,
+                        bytes: bytesWritten
+                    });
+                }
+                appendRecentProxyRequest({
+                    url: cleanUrl,
+                    type: 'blob',
+                    status: resp.status,
+                    fromCache: false,
+                    bytes: bytesWritten,
+                    durationMs: Date.now() - startTime
+                });
+                recordTransferSample(bytesWritten, Date.now() - startTime);
                 const duration = Date.now() - startTime;
                 console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
                 requestController.cleanup();
@@ -724,6 +1083,23 @@ app.get('/proxy', async (req, res) => {
 
         // 记录流量（来自网络）
         recordTraffic(cleanUrl, responseData.length, false);
+        if (downloadMetadata.downloadId) {
+            reportProxyDownloadEvent({
+                ...downloadMetadata,
+                status: resp.status === 200 ? 'completed' : 'upstream-error',
+                fromCache: false,
+                bytes: responseData.length
+            });
+        }
+        appendRecentProxyRequest({
+            url: cleanUrl,
+            type: isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'),
+            status: resp.status,
+            fromCache: false,
+            bytes: responseData.length,
+            durationMs: Date.now() - startTime
+        });
+        recordTransferSample(responseData.length, Date.now() - startTime);
 
         // 发送响应
         if (!responseSent) {
@@ -739,6 +1115,23 @@ app.get('/proxy', async (req, res) => {
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
+        if (downloadMetadata.downloadId) {
+            reportProxyDownloadEvent({
+                ...downloadMetadata,
+                status: 'failed',
+                fromCache: false,
+                bytes: 0
+            });
+        }
+        appendRecentProxyRequest({
+            url: targetUrl || '',
+            type: isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'),
+            status: 'error',
+            fromCache: false,
+            bytes: 0,
+            durationMs: Date.now() - startTime,
+            error: err.message || 'Unknown error'
+        });
         // 使用安全的方式发送错误响应
         if (!responseSent) {
             sendErrorResponse(500, err.message || 'Internal server error');
@@ -887,14 +1280,40 @@ app.get('/api/tracking-stats', (req, res) => {
     }
 });
 
+app.get('/api/node-status', (req, res) => {
+    try {
+        res.json({
+            proxyNodeId: PROXY_NODE_ID,
+            registered: proxyRegistryState.registered,
+            lastHeartbeatAt: proxyRegistryState.lastHeartbeatAt,
+            lastSpeedTest: proxyRegistryState.lastSpeedTest,
+            service: {
+                port: SERVICE_PORT,
+                host: HOST,
+                publicBaseUrl: PROXY_PUBLIC_BASE_URL,
+                registryServiceUrl: REGISTRY_SERVICE_URL,
+                upstreamProxyEnabled: USE_PROXY,
+                upstreamProxyUrl: USE_PROXY ? PROXY_URL : '',
+                cacheBlobEnabled: CACHE_BLOB
+            },
+            traffic: {
+                totalRequests: trafficStats.totalRequests,
+                totalBytes: trafficStats.totalBytes,
+                cacheHits: trafficStats.cacheHits,
+                cacheMisses: trafficStats.cacheMisses
+            },
+            cache: responseCache.getStats(),
+            recentRequests: recentProxyRequests.slice(0, 20)
+        });
+    } catch (err) {
+        console.error('[Node Status API] Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ==================== 静态文件服务 ====================
 app.get('/dashboard', (req, res) => {
-    const dashboardPath = path.join(__dirname, 'dashboard.html');
-    if (fs.existsSync(dashboardPath)) {
-        res.sendFile(dashboardPath);
-    } else {
-        res.status(404).send('Dashboard not found');
-    }
+    res.redirect('/traffic-dashboard');
 });
 
 app.get('/traffic-dashboard', (req, res) => {
@@ -906,15 +1325,29 @@ app.get('/traffic-dashboard', (req, res) => {
     }
 });
 
+app.get('/', (req, res) => {
+    res.redirect('/traffic-dashboard');
+});
+
+app.use((err, req, res, next) => {
+    console.error('[Express] Unhandled route error:', err && err.stack ? err.stack : err);
+    if (res.headersSent) {
+        return next(err);
+    }
+    res.status(500).json({
+        error: err && err.message ? err.message : 'Internal Server Error'
+    });
+});
+
 // ==================== 启动服务器 ====================
-const PORT = 7000;
 const HOST = '0.0.0.0'; // 监听所有接口，方便外网访问
 
-app.listen(PORT, HOST, () => {
-    console.log(`Proxy server running at http://0.0.0.0:${PORT}`);
+app.listen(SERVICE_PORT, HOST, () => {
+    console.log(`Proxy server running at http://0.0.0.0:${SERVICE_PORT}`);
     console.log(`Server is accessible from:`);
-    console.log(`  - Local: http://0.0.0.0:${PORT}`);
-    console.log(`  - External: http://${require('os').hostname()}:${PORT}`);
+    console.log(`  - Local: http://0.0.0.0:${SERVICE_PORT}`);
+    console.log(`  - External: http://${require('os').hostname()}:${SERVICE_PORT}`);
+    console.log(`  - Public health check target: ${PROXY_PUBLIC_BASE_URL}/health`);
     console.log(`\n网络配置:`);
     console.log(`  - 代理模式: ${USE_PROXY ? '已启用' : '已禁用（直连）'}`);
     if (USE_PROXY) {
@@ -924,12 +1357,36 @@ app.listen(PORT, HOST, () => {
     console.log(`  - Traffic statistics: /api/traffic-stats`);
     console.log(`  - Cache management: /api/cache-stats, /api/cache-entries, /api/cache-clear`);
     console.log(`  - Tracking: /api/tracking-stats`);
-    console.log(`  - Dashboard: /dashboard`);
-    console.log(`  - Traffic Dashboard: /traffic-dashboard`);
+    console.log(`  - Node Operations Dashboard: /traffic-dashboard`);
+    console.log(`  - /dashboard redirects to /traffic-dashboard`);
     console.log(`\n缓存配置:`);
     console.log(`  - Max items: ${responseCache.maxSize}`);
     console.log(`  - Max size: ${(responseCache.maxBytes / 1024 / 1024).toFixed(2)} MB`);
     console.log(`\n提示: 通过环境变量控制代理`);
-    console.log(`  启用代理: USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 node service.js`);
-    console.log(`  禁用代理: node service.js`);
+    console.log(`  启用代理: PORT=${SERVICE_PORT} USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 node service.js`);
+    console.log(`  禁用代理: PORT=${SERVICE_PORT} node service.js`);
+    console.log(`  公网部署请确保已放行 TCP ${SERVICE_PORT}，否则记录服务注册校验会超时`);
+    console.log(`  心跳间隔: ${Math.round(HEARTBEAT_INTERVAL_MS / 1000)}s, 测速间隔: ${Math.round(SPEED_TEST_INTERVAL_MS / 1000)}s`);
+
+    registerProxyNode()
+        .then(() => sendHeartbeat({ includeSpeedTest: false }))
+        .catch(err => {
+            console.error('[Registry] Initial registration/heartbeat failed:', err.message);
+            console.error(`[Registry] Check whether ${PROXY_PUBLIC_BASE_URL}/health is publicly reachable and the cloud firewall/security group allows TCP ${SERVICE_PORT}`);
+            process.exit(1);
+        });
+
+    setInterval(() => {
+        sendHeartbeat({ includeSpeedTest: false }).catch(err => {
+            console.warn('[Registry] Heartbeat failed:', err.message);
+        });
+    }, HEARTBEAT_INTERVAL_MS);
+
+    setInterval(() => {
+        runSpeedTest()
+            .then(() => sendHeartbeat({ includeSpeedTest: false }))
+            .catch(err => {
+                console.warn('[Registry] Scheduled speed test failed:', err.message);
+            });
+    }, SPEED_TEST_INTERVAL_MS);
 });

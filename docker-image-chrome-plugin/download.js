@@ -27,14 +27,30 @@ async function init() {
             filename: filename,
             saveAs: true
         }, (id) => {
-            // 下载触发后关闭
-            // 稍微延迟以确保download API已接收
-            setTimeout(() => {
-                // 清理并关闭
+            if (chrome.runtime.lastError || !id) {
+                document.body.innerHTML = `Error: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : 'Download start failed'}`;
+                return;
+            }
+
+            // 只有在下载完成或失败后才清理，避免用户还没确认保存对话框时就撤销 Blob URL。
+            const listener = (delta) => {
+                if (delta.id !== id || !delta.state) return;
+
+                const state = delta.state.current;
+                if (state !== 'complete' && state !== 'interrupted') return;
+
+                chrome.downloads.onChanged.removeListener(listener);
                 URL.revokeObjectURL(url);
                 deleteBlobFromDB(key);
-                window.close();
-            }, 1000);
+
+                if (state === 'complete') {
+                    window.close();
+                } else {
+                    document.body.innerHTML = 'Error: Download interrupted';
+                }
+            };
+
+            chrome.downloads.onChanged.addListener(listener);
         });
 
     } catch (err) {

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>代理记录服务面板</title>
+  <style>
+    :root {
+      --bg: linear-gradient(135deg, #f3f0e8 0%, #dbe4f0 100%);
+      --card: rgba(255, 255, 255, 0.92);
+      --text: #1b2733;
+      --muted: #607080;
+      --line: rgba(27, 39, 51, 0.12);
+      --accent: #0f766e;
+      --accent-strong: #155e75;
+      --warn: #b45309;
+      --danger: #b42318;
+      --ok: #15803d;
+      --shadow: 0 20px 40px rgba(30, 41, 59, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+
+    .hero, .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .hero {
+      padding: 28px;
+      margin-bottom: 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    h1, h2 { margin: 0; }
+    h1 { font-size: 30px; }
+    h2 { font-size: 18px; margin-bottom: 16px; }
+    .sub { color: var(--muted); margin-top: 8px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--accent-strong) 100%);
+      color: #fff;
+      padding: 11px 18px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .stamp { color: var(--muted); font-size: 13px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .stat {
+      padding: 18px 20px;
+      border-radius: 20px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .stat .label { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    .stat .value { font-size: 28px; font-weight: 700; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .panel { padding: 22px; }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.ok { background: rgba(21,128,61,0.12); color: var(--ok); }
+    .tag.warn { background: rgba(180,83,9,0.12); color: var(--warn); }
+    .tag.err { background: rgba(180,35,24,0.12); color: var(--danger); }
+    .rows { display: grid; gap: 12px; }
+    .row {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.8);
+    }
+    .row .title { font-weight: 700; }
+    .row .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .empty { color: var(--muted); padding: 28px 0; text-align: center; }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div>
+        <h1>代理记录服务面板</h1>
+        <div class="sub">查看节点状态、下载结果、代理侧事件和流量汇总。</div>
+      </div>
+      <div class="toolbar">
+        <button class="btn" onclick="loadData()">刷新</button>
+        <div class="stamp" id="lastUpdate">最后更新: -</div>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><div class="label">代理节点</div><div class="value" id="proxyTotal">-</div></div>
+      <div class="stat"><div class="label">在线节点</div><div class="value" id="proxyHealthy">-</div></div>
+      <div class="stat"><div class="label">下载总数</div><div class="value" id="downloadTotal">-</div></div>
+      <div class="stat"><div class="label">成功率</div><div class="value" id="successRate">-</div></div>
+      <div class="stat"><div class="label">总流量</div><div class="value" id="trafficTotal">-</div></div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>代理节点</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>节点</th>
+                <th>状态</th>
+                <th>位置</th>
+                <th>测速</th>
+                <th>流量</th>
+                <th>心跳</th>
+              </tr>
+            </thead>
+            <tbody id="proxyTable"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>最近代理事件</h2>
+        <div class="rows" id="eventList"><div class="empty">加载中...</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>最近下载记录</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>下载 ID</th>
+              <th>镜像</th>
+              <th>架构</th>
+              <th>下载位置</th>
+              <th>代理</th>
+              <th>状态</th>
+              <th>大小</th>
+              <th>耗时</th>
+              <th>平均速度</th>
+              <th>时间</th>
+            </tr>
+          </thead>
+          <tbody id="downloadTable"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function fmtBytes(bytes) {
+      const value = Number(bytes || 0);
+      if (!value) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const idx = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+      return `${(value / (1024 ** idx)).toFixed(idx === 0 ? 0 : 2)} ${units[idx]}`;
+    }
+
+    function fmtTime(value) {
+      if (!value) return '-';
+      return new Date(value).toLocaleString('zh-CN');
+    }
+
+    function fmtDuration(ms) {
+      const value = Number(ms || 0);
+      if (!value) return '-';
+      if (value < 1000) return `${value} ms`;
+      const totalSeconds = Math.floor(value / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      if (!minutes) return `${seconds}s`;
+      return `${minutes}m ${seconds}s`;
+    }
+
+    function badge(status) {
+      if (status === 'completed' || status === 'online' || status === 'completed') return `<span class="tag ok">${status}</span>`;
+      if (status === 'failed' || status === 'unhealthy') return `<span class="tag err">${status}</span>`;
+      return `<span class="tag warn">${status}</span>`;
+    }
+
+    async function loadData() {
+      const [statsRes, proxiesRes, downloadsRes, eventsRes] = await Promise.all([
+        fetch('/api/stats'),
+        fetch('/api/proxies'),
+        fetch('/api/downloads'),
+        fetch('/api/events?limit=12')
+      ]);
+
+      const stats = await statsRes.json();
+      const proxies = await proxiesRes.json();
+      const downloads = await downloadsRes.json();
+      const events = await eventsRes.json();
+
+      document.getElementById('proxyTotal').textContent = stats.proxies.total;
+      document.getElementById('proxyHealthy').textContent = stats.proxies.healthy;
+      document.getElementById('downloadTotal').textContent = stats.downloads.total;
+      document.getElementById('successRate').textContent = `${stats.downloads.successRate || 0}%`;
+      document.getElementById('trafficTotal').textContent = fmtBytes(stats.traffic.totalBytes);
+      document.getElementById('lastUpdate').textContent = `最后更新: ${fmtTime(stats.meta?.updatedAt)}`;
+
+      const proxyTable = document.getElementById('proxyTable');
+      if (!proxies.proxies.length) {
+        proxyTable.innerHTML = '<tr><td colspan="6" class="empty">暂无节点</td></tr>';
+      } else {
+        proxyTable.innerHTML = proxies.proxies.map(proxy => `
+          <tr>
+            <td>
+              <div><strong>${proxy.name}</strong></div>
+              <div class="mono">${proxy.baseUrl}</div>
+            </td>
+            <td>${badge(proxy.healthy ? 'online' : 'offline')}</td>
+            <td>${[proxy.location.country, proxy.location.region, proxy.location.city].filter(Boolean).join(' / ') || '-'}</td>
+            <td>${proxy.speedTest.bandwidthMbps || 0} Mbps / ${proxy.speedTest.latencyMs || '-'} ms</td>
+            <td>${fmtBytes(proxy.traffic.totalBytes)} / ${proxy.traffic.requestCount || 0} req</td>
+            <td>${fmtTime(proxy.lastHeartbeatAt)}</td>
+          </tr>
+        `).join('');
+      }
+
+      const downloadTable = document.getElementById('downloadTable');
+      if (!downloads.downloads.length) {
+        downloadTable.innerHTML = '<tr><td colspan="10" class="empty">暂无下载记录</td></tr>';
+      } else {
+        downloadTable.innerHTML = downloads.downloads.slice(0, 20).map(item => `
+          <tr>
+            <td class="mono">${item.downloadId}</td>
+            <td>${item.image}:${item.tag}</td>
+            <td>${item.arch}</td>
+            <td>${[item.clientGeo?.country, item.clientGeo?.region, item.clientGeo?.city].filter(Boolean).join(' / ') || (item.clientIp || '-')}</td>
+            <td>${item.proxyId || '-'}</td>
+            <td>${badge(item.status)}</td>
+            <td>${fmtBytes(item.size)}</td>
+            <td>${fmtDuration(item.durationMs)}</td>
+            <td>${fmtBytes(item.averageSpeedBytes)}/s</td>
+            <td>${fmtTime(item.completedAt || item.failedAt || item.startedAt)}</td>
+          </tr>
+        `).join('');
+      }
+
+      const eventList = document.getElementById('eventList');
+      if (!events.events.length) {
+        eventList.innerHTML = '<div class="empty">暂无事件</div>';
+      } else {
+        eventList.innerHTML = events.events.map(event => `
+          <div class="row">
+            <div class="title">${event.image || 'unknown'} ${event.tag ? ':' + event.tag : ''} ${badge(event.status || 'observed')}</div>
+            <div class="meta">代理 ${event.proxyId || '-'} · 架构 ${event.arch || '-'} · ${fmtBytes(event.bytes)} · ${fmtTime(event.timestamp)}</div>
+          </div>
+        `).join('');
+      }
+    }
+
+    loadData().catch(error => {
+      console.error(error);
+      document.getElementById('lastUpdate').textContent = `加载失败: ${error.message}`;
+    });
+    setInterval(() => loadData().catch(console.error), 15000);
+  </script>
+</body>
+</html>
