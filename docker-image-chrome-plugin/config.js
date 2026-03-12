@@ -2,7 +2,7 @@
 // 统一维护代理记录服务与静态兜底代理配置
 
 const PROXY_REGISTRY_CONFIG = {
-  serviceBase: 'http://127.0.0.1:3000',
+  serviceBase: 'http://123.57.165.38:3000',
   select: '/api/proxies/select',
   downloadsStart: '/api/downloads/start',
   downloadsComplete: '/api/downloads/complete',

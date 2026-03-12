@@ -13,7 +13,10 @@ const REGISTRY_SERVICE_URL = process.env.REGISTRY_SERVICE_URL || 'http://127.0.0
 const PROXY_NODE_ID = process.env.PROXY_NODE_ID || cryptoSafeRandomId('proxy');
 const PROXY_PUBLIC_BASE_URL = process.env.PROXY_PUBLIC_BASE_URL || `http://127.0.0.1:${SERVICE_PORT}`;
 const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '60000', 10);
+const SPEED_TEST_INTERVAL_MS = parseInt(process.env.SPEED_TEST_INTERVAL_MS || '300000', 10);
 const SPEED_TEST_TARGET = process.env.SPEED_TEST_TARGET || 'https://registry-1.docker.io/v2/';
+const SPEED_TEST_IMAGE = process.env.SPEED_TEST_IMAGE || 'library/busybox';
+const SPEED_TEST_TAG = process.env.SPEED_TEST_TAG || 'latest';
 
 // 缓存配置（可通过环境变量控制）
 const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob，只有明确设置为false时才禁用
@@ -73,13 +76,22 @@ function cryptoSafeRandomId(prefix) {
 const proxyRegistryState = {
     registered: false,
     lastHeartbeatAt: null,
+    location: {
+        countryCode: '',
+        country: '',
+        region: '',
+        city: ''
+    },
     lastSpeedTest: {
         bandwidthMbps: 0,
         latencyMs: 0,
         testedAt: null,
         target: SPEED_TEST_TARGET
-    }
+    },
+    transferSamples: []
 };
+
+let heartbeatTimer = null;
 
 async function postToRegistry(pathname, payload) {
     try {
@@ -103,27 +115,48 @@ async function postToRegistry(pathname, payload) {
 async function runSpeedTest() {
     const startedAt = Date.now();
     try {
-        const response = await fetch(SPEED_TEST_TARGET, {
+        const tokenResponse = await fetch(`https://auth.docker.io/token?service=registry.docker.io&scope=repository:${SPEED_TEST_IMAGE}:pull`, {
             method: 'GET',
             timeout: 15000,
             agent: proxyAgent || undefined
         });
-        const buffer = await response.buffer();
-        const durationMs = Math.max(Date.now() - startedAt, 1);
-        const bandwidthMbps = Number(((buffer.length * 8) / durationMs / 1000).toFixed(2));
+        const tokenPayload = await tokenResponse.json();
+        const token = tokenPayload.token || tokenPayload.access_token || '';
+        const manifestStartedAt = Date.now();
+        const manifestResponse = await fetch(`https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`, {
+            method: 'GET',
+            timeout: 15000,
+            agent: proxyAgent || undefined,
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.docker.distribution.manifest.list.v2+json'
+            }
+        });
+        const manifestBuffer = await manifestResponse.buffer();
+        const durationMs = Math.max(Date.now() - manifestStartedAt, 1);
+        const manifestThroughput = (manifestBuffer.length * 8) / durationMs / 1000;
+
+        const sampleBandwidths = proxyRegistryState.transferSamples.map(sample => sample.mbps).filter(value => Number.isFinite(value) && value > 0);
+        if (manifestThroughput > 0) {
+            sampleBandwidths.push(manifestThroughput);
+        }
+        const averageBandwidth = sampleBandwidths.length
+            ? sampleBandwidths.reduce((sum, value) => sum + value, 0) / sampleBandwidths.length
+            : 0;
+        const bandwidthMbps = Number(Math.max(averageBandwidth, manifestThroughput > 0 ? 0.01 : 0).toFixed(2));
 
         proxyRegistryState.lastSpeedTest = {
             bandwidthMbps,
             latencyMs: durationMs,
             testedAt: new Date().toISOString(),
-            target: SPEED_TEST_TARGET
+            target: `https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`
         };
     } catch (error) {
         proxyRegistryState.lastSpeedTest = {
-            bandwidthMbps: 0,
-            latencyMs: 0,
+            bandwidthMbps: proxyRegistryState.lastSpeedTest.bandwidthMbps || 0,
+            latencyMs: proxyRegistryState.lastSpeedTest.latencyMs || 0,
             testedAt: new Date().toISOString(),
-            target: SPEED_TEST_TARGET
+            target: proxyRegistryState.lastSpeedTest.target || SPEED_TEST_TARGET
         };
         console.warn('[Registry] Speed test failed:', error.message);
     }
@@ -131,8 +164,81 @@ async function runSpeedTest() {
     return proxyRegistryState.lastSpeedTest;
 }
 
+async function lookupLocation() {
+    const hostname = new URL(PROXY_PUBLIC_BASE_URL).hostname;
+    const providers = [
+        {
+            name: 'ip-api',
+            url: `http://ip-api.com/json/${encodeURIComponent(hostname)}?lang=zh-CN`,
+            parse(payload) {
+                if (payload && payload.status === 'success') {
+                    return {
+                        countryCode: payload.countryCode || '',
+                        country: payload.country || '',
+                        region: payload.regionName || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        },
+        {
+            name: 'ipwho.is',
+            url: `https://ipwho.is/${encodeURIComponent(hostname)}`,
+            parse(payload) {
+                if (payload && payload.success !== false) {
+                    return {
+                        countryCode: payload.country_code || '',
+                        country: payload.country || '',
+                        region: payload.region || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        },
+        {
+            name: 'ipapi.co',
+            url: `https://ipapi.co/${encodeURIComponent(hostname)}/json/`,
+            parse(payload) {
+                if (payload && !payload.error) {
+                    return {
+                        countryCode: payload.country_code || '',
+                        country: payload.country_name || '',
+                        region: payload.region || '',
+                        city: payload.city || ''
+                    };
+                }
+                return null;
+            }
+        }
+    ];
+
+    try {
+        for (const provider of providers) {
+            try {
+                const response = await fetch(provider.url, {
+                    timeout: 8000
+                });
+                const payload = await response.json();
+                const location = provider.parse(payload);
+                if (location && (location.countryCode || location.country || location.region || location.city)) {
+                    proxyRegistryState.location = location;
+                    return proxyRegistryState.location;
+                }
+            } catch (error) {
+                console.warn(`[Registry] ${provider.name} location lookup failed:`, error.message);
+            }
+        }
+    } catch (error) {
+        console.warn('[Registry] Location lookup failed:', error.message);
+    }
+
+    return proxyRegistryState.location;
+}
+
 async function registerProxyNode() {
-    const speedTest = await runSpeedTest();
+    const [speedTest, location] = await Promise.all([runSpeedTest(), lookupLocation()]);
     const result = await postToRegistry('/api/proxies/register', {
         proxyId: PROXY_NODE_ID,
         name: PROXY_NODE_ID,
@@ -142,6 +248,7 @@ async function registerProxyNode() {
         status: 'online',
         connectivity: 'reachable',
         provider: USE_PROXY ? `upstream:${PROXY_URL}` : 'direct',
+        location,
         speedTest,
         capabilities: {
             blobCache: CACHE_BLOB,
@@ -153,13 +260,15 @@ async function registerProxyNode() {
     console.log('[Registry] Proxy node registered:', result.validation?.checkedUrl || PROXY_PUBLIC_BASE_URL);
 }
 
-async function sendHeartbeat() {
-    const speedTest = await runSpeedTest();
+async function sendHeartbeat(options = {}) {
+    const includeSpeedTest = options.includeSpeedTest !== false;
+    const speedTest = includeSpeedTest ? await runSpeedTest() : proxyRegistryState.lastSpeedTest;
     const totalBytes = trafficStats.totalBytes;
     const heartbeat = await postToRegistry('/api/proxies/heartbeat', {
         proxyId: PROXY_NODE_ID,
         status: 'online',
         connectivity: 'reachable',
+        location: proxyRegistryState.location,
         speedTest,
         traffic: {
             bytesIn: totalBytes,
@@ -186,6 +295,18 @@ async function sendHeartbeat() {
         lastHeartbeatAt: new Date().toISOString()
     });
     proxyRegistryState.lastHeartbeatAt = heartbeat?.proxy?.lastHeartbeatAt || new Date().toISOString();
+}
+
+function scheduleHeartbeat(delayMs = 2000) {
+    if (heartbeatTimer) {
+        clearTimeout(heartbeatTimer);
+    }
+
+    heartbeatTimer = setTimeout(() => {
+        sendHeartbeat({ includeSpeedTest: false }).catch(err => {
+            console.warn('[Registry] Scheduled heartbeat failed:', err.message);
+        });
+    }, delayMs);
 }
 
 async function reportProxyDownloadEvent(payload) {
@@ -309,6 +430,30 @@ function recordTraffic(url, bytes, fromCache) {
         fs.appendFileSync(TRAFFIC_LOG_PATH, JSON.stringify(logEntry) + '\n');
     } catch (err) {
         console.error('[Traffic] Failed to write log:', err);
+    }
+
+    scheduleHeartbeat();
+}
+
+function recordTransferSample(bytes, durationMs) {
+    if (!bytes || !durationMs || durationMs <= 0) {
+        return;
+    }
+
+    const mbps = Number((((bytes * 8) / durationMs) / 1000).toFixed(2));
+    if (!Number.isFinite(mbps) || mbps <= 0) {
+        return;
+    }
+
+    proxyRegistryState.transferSamples.unshift({
+        mbps,
+        bytes,
+        durationMs,
+        timestamp: new Date().toISOString()
+    });
+
+    if (proxyRegistryState.transferSamples.length > 12) {
+        proxyRegistryState.transferSamples.length = 12;
     }
 }
 
@@ -758,6 +903,7 @@ app.get('/proxy', async (req, res) => {
                     bytes: cached.size,
                     durationMs: Date.now() - startTime
                 });
+                recordTransferSample(cached.size, Date.now() - startTime);
 
                 console.log('[proxy] 从缓存发送响应');
 
@@ -917,6 +1063,7 @@ app.get('/proxy', async (req, res) => {
                     bytes: bytesWritten,
                     durationMs: Date.now() - startTime
                 });
+                recordTransferSample(bytesWritten, Date.now() - startTime);
                 const duration = Date.now() - startTime;
                 console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
                 requestController.cleanup();
@@ -952,6 +1099,7 @@ app.get('/proxy', async (req, res) => {
             bytes: responseData.length,
             durationMs: Date.now() - startTime
         });
+        recordTransferSample(responseData.length, Date.now() - startTime);
 
         // 发送响应
         if (!responseSent) {
@@ -1199,6 +1347,7 @@ app.listen(SERVICE_PORT, HOST, () => {
     console.log(`Server is accessible from:`);
     console.log(`  - Local: http://0.0.0.0:${SERVICE_PORT}`);
     console.log(`  - External: http://${require('os').hostname()}:${SERVICE_PORT}`);
+    console.log(`  - Public health check target: ${PROXY_PUBLIC_BASE_URL}/health`);
     console.log(`\n网络配置:`);
     console.log(`  - 代理模式: ${USE_PROXY ? '已启用' : '已禁用（直连）'}`);
     if (USE_PROXY) {
@@ -1216,17 +1365,28 @@ app.listen(SERVICE_PORT, HOST, () => {
     console.log(`\n提示: 通过环境变量控制代理`);
     console.log(`  启用代理: PORT=${SERVICE_PORT} USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 node service.js`);
     console.log(`  禁用代理: PORT=${SERVICE_PORT} node service.js`);
+    console.log(`  公网部署请确保已放行 TCP ${SERVICE_PORT}，否则记录服务注册校验会超时`);
+    console.log(`  心跳间隔: ${Math.round(HEARTBEAT_INTERVAL_MS / 1000)}s, 测速间隔: ${Math.round(SPEED_TEST_INTERVAL_MS / 1000)}s`);
 
     registerProxyNode()
-        .then(() => sendHeartbeat())
+        .then(() => sendHeartbeat({ includeSpeedTest: false }))
         .catch(err => {
             console.error('[Registry] Initial registration/heartbeat failed:', err.message);
+            console.error(`[Registry] Check whether ${PROXY_PUBLIC_BASE_URL}/health is publicly reachable and the cloud firewall/security group allows TCP ${SERVICE_PORT}`);
             process.exit(1);
         });
 
     setInterval(() => {
-        sendHeartbeat().catch(err => {
+        sendHeartbeat({ includeSpeedTest: false }).catch(err => {
             console.warn('[Registry] Heartbeat failed:', err.message);
         });
     }, HEARTBEAT_INTERVAL_MS);
+
+    setInterval(() => {
+        runSpeedTest()
+            .then(() => sendHeartbeat({ includeSpeedTest: false }))
+            .catch(err => {
+                console.warn('[Registry] Scheduled speed test failed:', err.message);
+            });
+    }, SPEED_TEST_INTERVAL_MS);
 });

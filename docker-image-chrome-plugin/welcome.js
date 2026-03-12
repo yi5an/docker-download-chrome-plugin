@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const registryBase = typeof getProxyRegistryServiceUrl === 'function'
     ? getProxyRegistryServiceUrl()
-    : 'http://127.0.0.1:3000';
+    : 'http://123.57.165.38:3000';
   const installScriptUrl = `${registryBase}/install-proxy.sh`;
   const installCommand = `curl -fsSL ${installScriptUrl} | REGISTRY_SERVICE_URL=${registryBase} bash -s -- <YOUR_PUBLIC_IP> 7001`;
 

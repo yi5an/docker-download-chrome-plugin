@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]-}"
+SCRIPT_DIR=""
 PUBLIC_IP="${1:-}"
 PORT="${2:-${PORT:-7001}}"
 HOST="${HOST:-0.0.0.0}"
@@ -9,9 +10,33 @@ REGISTRY_SERVICE_URL="${REGISTRY_SERVICE_URL:-http://127.0.0.1:3000}"
 USE_PROXY="${USE_PROXY:-false}"
 PROXY_URL="${PROXY_URL:-http://127.0.0.1:7890}"
 NODE_ID="${PROXY_NODE_ID:-proxy-$(hostname)-${PORT}}"
-ENV_FILE="${SCRIPT_DIR}/.env.proxy-service"
-LOG_FILE="${SCRIPT_DIR}/service-install.log"
 APP_NAME="${PM2_APP_NAME:-docker-download-proxy-${PORT}}"
+INSTALL_ROOT="${INSTALL_ROOT:-/opt/docker-download-chrome-plugin}"
+REPO_URL="${REPO_URL:-https://github.com/yi5an/docker-download-chrome-plugin.git}"
+REPO_BRANCH="${REPO_BRANCH:-feat/proxy-registry-service}"
+
+if [[ -n "${SCRIPT_SOURCE}" && "${SCRIPT_SOURCE}" != "bash" && "${SCRIPT_SOURCE}" != "-" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_SOURCE}")" && pwd)"
+fi
+
+prompt_confirm() {
+  local prompt_text="$1"
+  local answer=""
+
+  if [[ -t 0 ]]; then
+    read -r -p "${prompt_text}" answer
+  elif [[ -r /dev/tty ]]; then
+    read -r -p "${prompt_text}" answer < /dev/tty
+  else
+    echo "Interactive confirmation is required, but no TTY is available."
+    exit 1
+  fi
+
+  if [[ ! "${answer}" =~ ^[Yy]$ ]]; then
+    echo "Installation cancelled."
+    exit 1
+  fi
+}
 
 detect_public_ip() {
   curl -fsS https://api.ipify.org 2>/dev/null || curl -fsS https://ifconfig.me 2>/dev/null || true
@@ -44,35 +69,53 @@ echo "  Public IP: ${PUBLIC_IP}"
 echo "  Public base URL: ${PUBLIC_BASE_URL}"
 echo "  Port: ${PORT}"
 echo "  Upstream proxy enabled: ${USE_PROXY}"
+echo "  Repo branch: ${REPO_BRANCH}"
+echo
+echo "Reminder:"
+echo "  - Open TCP port ${PORT} in your cloud security group / firewall"
+echo "  - The registry service will verify http://${PUBLIC_IP}:${PORT}/health during registration"
+echo "  - If port ${PORT} is blocked, registration will timeout"
+
+if [[ -z "${SCRIPT_DIR}" || ! -f "${SCRIPT_DIR}/service.js" ]]; then
+  echo
+  echo "Bootstrap mode detected. The installer will fetch the project into:"
+  echo "  ${INSTALL_ROOT}"
+  prompt_confirm "Continue downloading project files? [y/N] "
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git is required for bootstrap mode. Please install git first."
+    exit 1
+  fi
+
+  if [[ -d "${INSTALL_ROOT}/.git" ]]; then
+    git -C "${INSTALL_ROOT}" fetch --all --prune
+    git -C "${INSTALL_ROOT}" checkout "${REPO_BRANCH}"
+    git -C "${INSTALL_ROOT}" pull --ff-only origin "${REPO_BRANCH}"
+  else
+    mkdir -p "$(dirname "${INSTALL_ROOT}")"
+    git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${INSTALL_ROOT}"
+  fi
+
+  SCRIPT_DIR="${INSTALL_ROOT}/proxy_server"
+fi
+
+ENV_FILE="${SCRIPT_DIR}/.env.proxy-service"
+LOG_FILE="${SCRIPT_DIR}/service-install.log"
 
 cd "${SCRIPT_DIR}"
 
-NEEDS_DEPS_INSTALL="false"
-if [[ ! -d node_modules ]]; then
-  NEEDS_DEPS_INSTALL="true"
-fi
-
-if ! command -v pm2 >/dev/null 2>&1; then
-  NEEDS_DEPS_INSTALL="true"
-fi
-
+NEEDS_DEPS_INSTALL="true"
 if [[ "${NEEDS_DEPS_INSTALL}" == "true" ]]; then
   echo
   echo "This installer needs to install runtime dependencies before continuing."
-  echo "  - project dependencies: npm install"
+  echo "  - project dependencies refresh: npm install"
   if ! command -v pm2 >/dev/null 2>&1; then
     echo "  - global process manager: npm install -g pm2"
   fi
-  read -r -p "Continue installing dependencies? [y/N] " CONFIRM_INSTALL
-  if [[ ! "${CONFIRM_INSTALL}" =~ ^[Yy]$ ]]; then
-    echo "Installation cancelled."
-    exit 1
-  fi
+  prompt_confirm "Continue installing dependencies? [y/N] "
 fi
 
-if [[ ! -d node_modules ]]; then
-  npm install
-fi
+npm install
 
 if ! command -v pm2 >/dev/null 2>&1; then
   npm install -g pm2
@@ -134,5 +177,8 @@ for _ in $(seq 1 20); do
 done
 
 echo "Proxy service did not become healthy in time. Recent log:"
+echo "Common cause: port ${PORT} is not open to the public internet, so registry validation cannot reach this node."
+echo "Check your cloud security group / firewall, then verify:"
+echo "  curl -I -m 10 http://${PUBLIC_IP}:${PORT}/health"
 pm2 logs "${APP_NAME}" --lines 80 --nostream || true
 exit 1

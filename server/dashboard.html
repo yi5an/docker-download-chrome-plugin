@@ -187,6 +187,7 @@
               <th>下载 ID</th>
               <th>镜像</th>
               <th>架构</th>
+              <th>下载位置</th>
               <th>代理</th>
               <th>状态</th>
               <th>大小</th>
@@ -195,7 +196,7 @@
               <th>时间</th>
             </tr>
           </thead>
-          <tbody id="downloadTable"><tr><td colspan="9" class="empty">加载中...</td></tr></tbody>
+          <tbody id="downloadTable"><tr><td colspan="10" class="empty">加载中...</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -273,13 +274,14 @@
 
       const downloadTable = document.getElementById('downloadTable');
       if (!downloads.downloads.length) {
-        downloadTable.innerHTML = '<tr><td colspan="9" class="empty">暂无下载记录</td></tr>';
+        downloadTable.innerHTML = '<tr><td colspan="10" class="empty">暂无下载记录</td></tr>';
       } else {
         downloadTable.innerHTML = downloads.downloads.slice(0, 20).map(item => `
           <tr>
             <td class="mono">${item.downloadId}</td>
             <td>${item.image}:${item.tag}</td>
             <td>${item.arch}</td>
+            <td>${[item.clientGeo?.country, item.clientGeo?.region, item.clientGeo?.city].filter(Boolean).join(' / ') || (item.clientIp || '-')}</td>
             <td>${item.proxyId || '-'}</td>
             <td>${badge(item.status)}</td>
             <td>${fmtBytes(item.size)}</td>

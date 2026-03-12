@@ -12,6 +12,7 @@ const LEGACY_DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
 const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 10);
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
 
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
@@ -82,6 +83,37 @@ function summarizeLocation(location = {}) {
     region: location.region || '',
     city: location.city || ''
   };
+}
+
+function hasLocation(location = {}) {
+  return !!(location.countryCode || location.country || location.region || location.city);
+}
+
+function normalizeClientIp(ip = '') {
+  if (!ip) return '';
+  if (ip.startsWith('::ffff:')) {
+    return ip.slice(7);
+  }
+  if (ip === '::1') {
+    return '127.0.0.1';
+  }
+  return ip;
+}
+
+function getRequestIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+    return normalizeClientIp(forwardedFor.split(',')[0].trim());
+  }
+  return normalizeClientIp(req.ip || req.socket?.remoteAddress || '');
+}
+
+function isPublicIp(ip = '') {
+  if (!ip) return false;
+  if (ip === '127.0.0.1' || ip === '0.0.0.0' || ip === '::1') return false;
+  if (ip.startsWith('10.') || ip.startsWith('192.168.')) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return false;
+  return true;
 }
 
 function nowIso() {
@@ -174,6 +206,134 @@ function normalizeProxy(proxyId, payload, existing = {}) {
     lastHeartbeatAt: payload.lastHeartbeatAt || now,
     updatedAt: now
   };
+}
+
+async function lookupProxyLocation(baseUrl) {
+  const hostname = new URL(baseUrl).hostname;
+  const providers = [
+    {
+      name: 'ip-api',
+      url: `http://ip-api.com/json/${encodeURIComponent(hostname)}?lang=zh-CN`,
+      parse(payload) {
+        if (payload && payload.status === 'success') {
+          return {
+            countryCode: payload.countryCode || '',
+            country: payload.country || '',
+            region: payload.regionName || '',
+            city: payload.city || ''
+          };
+        }
+        return null;
+      }
+    },
+    {
+      name: 'ipwho.is',
+      url: `https://ipwho.is/${encodeURIComponent(hostname)}`,
+      parse(payload) {
+        if (payload && payload.success !== false) {
+          return {
+            countryCode: payload.country_code || '',
+            country: payload.country || '',
+            region: payload.region || '',
+            city: payload.city || ''
+          };
+        }
+        return null;
+      }
+    },
+    {
+      name: 'ipapi.co',
+      url: `https://ipapi.co/${encodeURIComponent(hostname)}/json/`,
+      parse(payload) {
+        if (payload && !payload.error) {
+          return {
+            countryCode: payload.country_code || '',
+            country: payload.country_name || '',
+            region: payload.region || '',
+            city: payload.city || ''
+          };
+        }
+        return null;
+      }
+    }
+  ];
+
+  try {
+    for (const provider of providers) {
+      try {
+        const response = await fetch(provider.url, {
+          signal: AbortSignal.timeout(8000)
+        });
+        const payload = await response.json();
+        const location = provider.parse(payload);
+        if (hasLocation(location)) {
+          return summarizeLocation(location);
+        }
+      } catch (error) {
+        console.warn(`[Geo] ${provider.name} lookup failed for ${baseUrl}:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.warn(`[Geo] Failed to lookup proxy location for ${baseUrl}:`, error.message);
+  }
+
+  return summarizeLocation({});
+}
+
+async function lookupIpLocation(ip) {
+  if (!isPublicIp(ip)) {
+    return summarizeLocation({});
+  }
+
+  const providers = [
+    {
+      name: 'ip-api',
+      url: `http://ip-api.com/json/${encodeURIComponent(ip)}?lang=zh-CN`,
+      parse(payload) {
+        if (payload && payload.status === 'success') {
+          return {
+            countryCode: payload.countryCode || '',
+            country: payload.country || '',
+            region: payload.regionName || '',
+            city: payload.city || ''
+          };
+        }
+        return null;
+      }
+    },
+    {
+      name: 'ipwho.is',
+      url: `https://ipwho.is/${encodeURIComponent(ip)}`,
+      parse(payload) {
+        if (payload && payload.success !== false) {
+          return {
+            countryCode: payload.country_code || '',
+            country: payload.country || '',
+            region: payload.region || '',
+            city: payload.city || ''
+          };
+        }
+        return null;
+      }
+    }
+  ];
+
+  for (const provider of providers) {
+    try {
+      const response = await fetch(provider.url, {
+        signal: AbortSignal.timeout(8000)
+      });
+      const payload = await response.json();
+      const location = provider.parse(payload);
+      if (hasLocation(location)) {
+        return summarizeLocation(location);
+      }
+    } catch (error) {
+      console.warn(`[Geo] ${provider.name} lookup failed for client IP ${ip}:`, error.message);
+    }
+  }
+
+  return summarizeLocation({});
 }
 
 function appendProxyDownloadEvent(store, proxyId, payload) {
@@ -378,7 +538,7 @@ app.post('/api/proxies/register', (req, res) => {
     return res.status(400).json({ error: 'Missing proxyId or baseUrl' });
   }
 
-  validateProxyBaseUrl(baseUrl).then(validation => {
+  Promise.all([validateProxyBaseUrl(baseUrl), lookupProxyLocation(baseUrl)]).then(([validation, lookedUpLocation]) => {
     if (!validation.ok) {
       return res.status(400).json({
         error: validation.error
@@ -386,7 +546,10 @@ app.post('/api/proxies/register', (req, res) => {
     }
 
     const store = readStore();
-    const proxy = normalizeProxy(proxyId, req.body, store.proxies[proxyId]);
+    const proxy = normalizeProxy(proxyId, {
+      ...req.body,
+      location: hasLocation(req.body.location) ? req.body.location : lookedUpLocation
+    }, store.proxies[proxyId]);
     proxy.connectivity = 'reachable';
     proxy.health = {
       ...proxy.health,
@@ -413,7 +576,12 @@ app.post('/api/proxies/heartbeat', (req, res) => {
   }
 
   const store = readStore();
-  const proxy = normalizeProxy(proxyId, req.body, store.proxies[proxyId] || {});
+  const existing = store.proxies[proxyId] || {};
+  const payload = { ...req.body };
+  if (!hasLocation(payload.location) && hasLocation(existing.location)) {
+    payload.location = existing.location;
+  }
+  const proxy = normalizeProxy(proxyId, payload, existing);
   proxy.lastHeartbeatAt = req.body.lastHeartbeatAt || nowIso();
   store.proxies[proxyId] = proxy;
 
@@ -474,17 +642,20 @@ app.get('/api/proxies', (req, res) => {
   res.json({ total: proxies.length, proxies });
 });
 
-app.post('/api/downloads/start', (req, res) => {
+app.post('/api/downloads/start', async (req, res) => {
   const { downloadId, image, tag, arch } = req.body || {};
   if (!downloadId || !image || !tag || !arch) {
     return res.status(400).json({ error: 'Missing downloadId/image/tag/arch' });
   }
 
+  const clientIp = getRequestIp(req);
+  const clientGeo = hasLocation(req.body.clientGeo) ? req.body.clientGeo : await lookupIpLocation(clientIp);
   const store = readStore();
   const existing = store.downloads[downloadId] || {};
   const download = buildDownloadRecord(downloadId, {
     ...req.body,
-    clientIp: req.ip,
+    clientIp,
+    clientGeo,
     status: 'started',
     startedAt: nowIso()
   }, existing);
