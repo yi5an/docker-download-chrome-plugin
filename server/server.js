@@ -3,6 +3,9 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const net = require('net');
+const dns = require('dns').promises;
+const maxmind = require('maxmind');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,6 +14,7 @@ const DATA_FILE = path.join(DATA_DIR, 'registry-data.json');
 const LEGACY_DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
 const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 10);
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
+const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || path.join(DATA_DIR, 'GeoLite2-City.mmdb');
 
 app.set('trust proxy', true);
 app.use(cors());
@@ -87,6 +91,32 @@ function summarizeLocation(location = {}) {
 
 function hasLocation(location = {}) {
   return !!(location.countryCode || location.country || location.region || location.city);
+}
+
+let geoReaderPromise = null;
+let geoReaderWarned = false;
+
+function getGeoReader() {
+  if (!geoReaderPromise) {
+    if (!fs.existsSync(GEOIP_DB_PATH)) {
+      if (!geoReaderWarned) {
+        console.warn(`[Geo] MaxMind database not found at ${GEOIP_DB_PATH}`);
+        geoReaderWarned = true;
+      }
+      geoReaderPromise = Promise.resolve(null);
+    } else {
+      geoReaderPromise = maxmind.open(GEOIP_DB_PATH)
+        .then(reader => {
+          console.log(`[Geo] Loaded MaxMind database: ${GEOIP_DB_PATH}`);
+          return reader;
+        })
+        .catch(error => {
+          console.warn(`[Geo] Failed to load MaxMind database ${GEOIP_DB_PATH}:`, error.message);
+          return null;
+        });
+    }
+  }
+  return geoReaderPromise;
 }
 
 function normalizeClientIp(ip = '') {
@@ -209,72 +239,12 @@ function normalizeProxy(proxyId, payload, existing = {}) {
 }
 
 async function lookupProxyLocation(baseUrl) {
-  const hostname = new URL(baseUrl).hostname;
-  const providers = [
-    {
-      name: 'ip-api',
-      url: `http://ip-api.com/json/${encodeURIComponent(hostname)}?lang=zh-CN`,
-      parse(payload) {
-        if (payload && payload.status === 'success') {
-          return {
-            countryCode: payload.countryCode || '',
-            country: payload.country || '',
-            region: payload.regionName || '',
-            city: payload.city || ''
-          };
-        }
-        return null;
-      }
-    },
-    {
-      name: 'ipwho.is',
-      url: `https://ipwho.is/${encodeURIComponent(hostname)}`,
-      parse(payload) {
-        if (payload && payload.success !== false) {
-          return {
-            countryCode: payload.country_code || '',
-            country: payload.country || '',
-            region: payload.region || '',
-            city: payload.city || ''
-          };
-        }
-        return null;
-      }
-    },
-    {
-      name: 'ipapi.co',
-      url: `https://ipapi.co/${encodeURIComponent(hostname)}/json/`,
-      parse(payload) {
-        if (payload && !payload.error) {
-          return {
-            countryCode: payload.country_code || '',
-            country: payload.country_name || '',
-            region: payload.region || '',
-            city: payload.city || ''
-          };
-        }
-        return null;
-      }
-    }
-  ];
-
   try {
-    for (const provider of providers) {
-      try {
-        const response = await fetch(provider.url, {
-          signal: AbortSignal.timeout(8000)
-        });
-        const payload = await response.json();
-        const location = provider.parse(payload);
-        if (hasLocation(location)) {
-          return summarizeLocation(location);
-        }
-      } catch (error) {
-        console.warn(`[Geo] ${provider.name} lookup failed for ${baseUrl}:`, error.message);
-      }
-    }
+    const hostname = new URL(baseUrl).hostname;
+    const lookupTarget = net.isIP(hostname) ? hostname : (await dns.lookup(hostname)).address;
+    return await lookupIpLocation(lookupTarget);
   } catch (error) {
-    console.warn(`[Geo] Failed to lookup proxy location for ${baseUrl}:`, error.message);
+    console.warn(`[Geo] Failed to resolve proxy location for ${baseUrl}:`, error.message);
   }
 
   return summarizeLocation({});
@@ -285,55 +255,67 @@ async function lookupIpLocation(ip) {
     return summarizeLocation({});
   }
 
-  const providers = [
-    {
-      name: 'ip-api',
-      url: `http://ip-api.com/json/${encodeURIComponent(ip)}?lang=zh-CN`,
-      parse(payload) {
-        if (payload && payload.status === 'success') {
-          return {
-            countryCode: payload.countryCode || '',
-            country: payload.country || '',
-            region: payload.regionName || '',
-            city: payload.city || ''
-          };
-        }
-        return null;
-      }
-    },
-    {
-      name: 'ipwho.is',
-      url: `https://ipwho.is/${encodeURIComponent(ip)}`,
-      parse(payload) {
-        if (payload && payload.success !== false) {
-          return {
-            countryCode: payload.country_code || '',
-            country: payload.country || '',
-            region: payload.region || '',
-            city: payload.city || ''
-          };
-        }
-        return null;
-      }
+  try {
+    const reader = await getGeoReader();
+    if (!reader) {
+      return summarizeLocation({});
     }
-  ];
 
-  for (const provider of providers) {
-    try {
-      const response = await fetch(provider.url, {
-        signal: AbortSignal.timeout(8000)
-      });
-      const payload = await response.json();
-      const location = provider.parse(payload);
-      if (hasLocation(location)) {
-        return summarizeLocation(location);
-      }
-    } catch (error) {
-      console.warn(`[Geo] ${provider.name} lookup failed for client IP ${ip}:`, error.message);
-    }
+    const record = reader.get(ip);
+    const location = {
+      countryCode: record?.country?.iso_code || '',
+      country: record?.country?.names?.['zh-CN'] || record?.country?.names?.en || '',
+      region: record?.subdivisions?.[0]?.names?.['zh-CN'] || record?.subdivisions?.[0]?.names?.en || '',
+      city: record?.city?.names?.['zh-CN'] || record?.city?.names?.en || ''
+    };
+
+    return summarizeLocation(location);
+  } catch (error) {
+    console.warn(`[Geo] MaxMind lookup failed for IP ${ip}:`, error.message);
   }
 
   return summarizeLocation({});
+}
+
+function getProxyScore(proxy, requestedCountry = '') {
+  const bandwidth = Number(proxy.speedTest?.bandwidthMbps || 0);
+  const latency = Number(proxy.speedTest?.latencyMs || 0);
+  const totalBytes = Number(proxy.traffic?.totalBytes || 0);
+  const successRate = Number(proxy.health?.successRate || 0);
+  const failureCount = Number(proxy.health?.failureCount || 0);
+  const heartbeatAgeMs = proxy.lastHeartbeatAt ? (Date.now() - new Date(proxy.lastHeartbeatAt).getTime()) : Number.MAX_SAFE_INTEGER;
+  const countryMatch = requestedCountry && proxy.location?.countryCode === requestedCountry ? 1 : 0;
+
+  let score = 0;
+  score += Math.min(bandwidth, 500) * 8;
+  score += latency > 0 ? Math.max(0, 160 - Math.min(latency, 160)) * 2 : 0;
+  score += Math.min(successRate, 1) * 120;
+  score -= Math.min(failureCount, 20) * 15;
+  score -= Math.min(totalBytes / (1024 * 1024 * 512), 200);
+  score -= Math.min(heartbeatAgeMs / 1000, 300);
+  score += countryMatch ? 40 : 0;
+  score += hasLocation(proxy.location) ? 5 : 0;
+  return Number(score.toFixed(2));
+}
+
+function pickBestProxy(store, options = {}) {
+  const proxies = Object.values(store.proxies).filter(isProxyHealthy);
+  if (!proxies.length) {
+    return null;
+  }
+
+  const requestedCountry = (options.countryCode || '').toUpperCase();
+  const scored = proxies
+    .map(proxy => ({
+      proxy,
+      score: getProxyScore(proxy, requestedCountry)
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const topScore = scored[0]?.score ?? -Infinity;
+  const topCandidates = scored.filter(entry => Math.abs(entry.score - topScore) <= 5);
+  const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)] || scored[0];
+  return selected ? selected.proxy : null;
 }
 
 function appendProxyDownloadEvent(store, proxyId, payload) {
@@ -422,34 +404,6 @@ function appendDownloadEvent(download, type, payload = {}) {
   if (download.events.length > 50) {
     download.events.length = 50;
   }
-}
-
-function pickBestProxy(store, options = {}) {
-  const proxies = Object.values(store.proxies).filter(isProxyHealthy);
-  if (!proxies.length) {
-    return null;
-  }
-
-  const requestedCountry = (options.countryCode || '').toUpperCase();
-  const preferred = proxies.filter(proxy => !requestedCountry || proxy.location.countryCode === requestedCountry);
-  const candidates = preferred.length ? preferred : proxies;
-
-  const sorted = candidates.sort((a, b) => {
-    const bandwidthDiff = (b.speedTest.bandwidthMbps || 0) - (a.speedTest.bandwidthMbps || 0);
-    if (bandwidthDiff !== 0) return bandwidthDiff;
-
-    const latencyA = a.speedTest.latencyMs || Number.MAX_SAFE_INTEGER;
-    const latencyB = b.speedTest.latencyMs || Number.MAX_SAFE_INTEGER;
-    if (latencyA !== latencyB) return latencyA - latencyB;
-
-    const trafficA = a.traffic.totalBytes || 0;
-    const trafficB = b.traffic.totalBytes || 0;
-    if (trafficA !== trafficB) return trafficA - trafficB;
-
-    return new Date(b.lastHeartbeatAt).getTime() - new Date(a.lastHeartbeatAt).getTime();
-  });
-
-  return sorted[0];
 }
 
 function sanitizeProxyResponse(proxy) {
@@ -629,7 +583,7 @@ app.get('/api/proxies/select', (req, res) => {
   res.json({
     success: true,
     proxy: sanitizeProxyResponse(proxy),
-    strategy: 'bandwidth-desc-latency-asc-traffic-asc'
+    strategy: 'weighted-score-with-country-bonus-and-random-tie-break'
   });
 });
 
