@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker 镜像一键下载器</title>
+  <style>
+    :root {
+      --bg: #eef3f1;
+      --ink: #172033;
+      --muted: #667286;
+      --line: rgba(23, 32, 51, 0.12);
+      --panel: rgba(255, 255, 255, 0.92);
+      --teal: #0f766e;
+      --teal-deep: #0b5257;
+      --sand: #f5ecdb;
+      --blue: #dbeafe;
+      --red: #fef2f2;
+      --green: #ecfdf3;
+      --shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 30%),
+        radial-gradient(circle at 85% 15%, rgba(11, 82, 87, 0.14), transparent 22%),
+        linear-gradient(180deg, #f7f4eb 0%, #edf4f7 100%);
+      font-family: "Avenir Next", "PingFang SC", "Segoe UI", sans-serif;
+    }
+
+    .shell {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 28px 22px 40px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) 320px;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-main {
+      padding: 30px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-main::after {
+      content: "";
+      position: absolute;
+      right: -70px;
+      top: -70px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(15, 118, 110, 0.2), transparent 70%);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.1);
+      color: var(--teal-deep);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      margin-top: 16px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+      max-width: 9ch;
+    }
+    .lead {
+      margin-top: 16px;
+      max-width: 54ch;
+      color: var(--muted);
+      line-height: 1.8;
+      font-size: 15px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+
+    .btn, .ghost {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn {
+      color: #fff;
+      background: linear-gradient(90deg, var(--teal), var(--teal-deep));
+      box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22);
+    }
+
+    .ghost {
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid rgba(23, 32, 51, 0.08);
+    }
+
+    .hero-side {
+      padding: 22px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .signal {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.82);
+    }
+    .signal .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .signal .value {
+      margin-top: 8px;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .signal .sub {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .stat {
+      padding: 18px 20px;
+    }
+    .stat .label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stat .value {
+      margin-top: 10px;
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+      gap: 18px;
+    }
+
+    .section {
+      padding: 22px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-head p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .task {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.85);
+    }
+    .task-top, .task-meta, .task-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .task-title {
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .task-meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .progress {
+      margin-top: 14px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(23, 32, 51, 0.08);
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--teal), #14b8a6);
+    }
+    .task-actions {
+      margin-top: 14px;
+      justify-content: flex-start;
+    }
+    .tiny-btn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .tiny-btn.danger {
+      color: #b42318;
+      border-color: rgba(180, 35, 24, 0.18);
+    }
+    .tiny-btn.primary {
+      color: var(--teal-deep);
+      border-color: rgba(15, 118, 110, 0.2);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.ok { background: var(--green); color: #166534; }
+    .badge.warn { background: var(--sand); color: #9a6700; }
+    .badge.err { background: var(--red); color: #b42318; }
+
+    .config-card, .help-card {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.84);
+    }
+    .config-card + .config-card,
+    .help-card + .help-card {
+      margin-top: 12px;
+    }
+    .config-card h3, .help-card h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .config-card p, .help-card p {
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .field input {
+      width: 100%;
+      border: 1px solid rgba(23, 32, 51, 0.12);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      background: rgba(255,255,255,0.92);
+      color: var(--ink);
+    }
+    .field input:focus {
+      outline: none;
+      border-color: rgba(15, 118, 110, 0.45);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.08);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 24px 0;
+    }
+
+    @media (max-width: 1080px) {
+      .hero, .layout, .stats {
+        grid-template-columns: 1fr;
+      }
+      h1 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="panel hero-main">
+        <div class="eyebrow">Extension Home</div>
+        <h1>先看状态，再去下载。</h1>
+        <p class="lead">
+          这是插件的主页面。你可以在这里看当前下载状态、检查认证和代理配置、快速打开 Docker Hub 示例页，
+          再决定是直接下载，还是先处理限流和认证问题。
+        </p>
+        <div class="hero-actions">
+          <a class="btn" href="https://hub.docker.com/_/busybox/tags" target="_blank" rel="noreferrer">打开示例 tags</a>
+          <button class="ghost" id="refresh-home">刷新状态</button>
+        </div>
+      </div>
+      <aside class="panel hero-side">
+        <div class="signal">
+          <div class="label">代理记录服务</div>
+          <div class="value" id="registry-host">-</div>
+          <div class="sub" id="proxy-summary">加载中...</div>
+        </div>
+        <div class="signal">
+          <div class="label">Docker Hub 认证</div>
+          <div class="value" id="auth-summary">未配置</div>
+          <div class="sub">私有镜像、受限仓库或匿名限流时再补认证。</div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="stats">
+      <div class="panel stat"><div class="label">活动任务</div><div class="value" id="active-count">0</div></div>
+      <div class="panel stat"><div class="label">历史任务</div><div class="value" id="history-count">0</div></div>
+      <div class="panel stat"><div class="label">失败任务</div><div class="value" id="failed-count">0</div></div>
+      <div class="panel stat"><div class="label">已完成</div><div class="value" id="done-count">0</div></div>
+    </section>
+
+    <section class="layout">
+      <div class="stack">
+        <section class="panel section">
+          <div class="section-head">
+            <div>
+              <h2>活动任务</h2>
+              <p>查看正在下载、打包中的任务，也可以直接取消。</p>
+            </div>
+          </div>
+          <div id="active-list" class="stack"></div>
+        </section>
+
+        <section class="panel section">
+          <div class="section-head">
+            <div>
+              <h2>最近历史</h2>
+              <p>保留最近 8 条任务，便于快速重试或检查失败原因。</p>
+            </div>
+          </div>
+          <div id="history-list" class="stack"></div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="panel section">
+          <div class="section-head">
+            <div>
+              <h2>配置</h2>
+              <p>集中查看认证和代理记录服务设置。</p>
+            </div>
+          </div>
+
+          <div class="config-card">
+            <h3>Docker Hub 认证</h3>
+            <p>只在私有镜像、受限仓库或频繁遇到匿名限流时使用。</p>
+            <div class="field">
+              <input id="docker-username" type="text" placeholder="Docker Hub 用户名或访问令牌">
+              <input id="docker-password" type="password" placeholder="密码或访问令牌">
+            </div>
+            <div class="hero-actions" style="margin-top: 14px;">
+              <button class="btn" id="save-auth-btn">保存认证</button>
+            </div>
+            <p class="muted" id="auth-status" style="margin-top: 10px;"></p>
+          </div>
+
+          <div class="config-card">
+            <h3>代理记录服务</h3>
+            <p class="mono" id="registry-url-text">-</p>
+            <p class="muted" style="margin-top: 8px;">插件会从这里获取可用代理，并上报下载开始、完成和失败记录。</p>
+          </div>
+        </section>
+
+        <section class="panel section">
+          <div class="section-head">
+            <div>
+              <h2>帮助</h2>
+              <p>先看这几条，再排查复杂问题。</p>
+            </div>
+          </div>
+
+          <div class="help-card">
+            <h3>怎么开始下载</h3>
+            <p>打开 Docker Hub 的 tags 页面，找到目标 tag 和架构，点击行右侧下载按钮。下载结果是 tar 包，可直接 `docker load -i image.tar`。</p>
+          </div>
+          <div class="help-card">
+            <h3>什么时候要配置认证</h3>
+            <p>只有私有镜像、受限仓库，或者匿名拉取触发限流时，才需要补 Docker Hub 账号或访问令牌。</p>
+          </div>
+          <div class="help-card">
+            <h3>为什么会失败</h3>
+            <p>最常见的是 `401`、`429`、代理节点不可用、或目标 tag/架构不存在。失败原因会直接显示在任务卡片里。</p>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="home.js"></script>
+</body>
+</html>

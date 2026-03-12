@@ -392,6 +392,29 @@ function buildDownloadRecord(downloadId, payload, existing = {}) {
   });
 }
 
+async function enrichDownloadsWithLocation(store, downloads) {
+  let changed = false;
+
+  for (const download of downloads) {
+    if (!hasLocation(download.clientGeo) && isPublicIp(download.clientIp)) {
+      const location = await lookupIpLocation(download.clientIp);
+      if (hasLocation(location)) {
+        download.clientGeo = location;
+        if (store.downloads[download.downloadId]) {
+          store.downloads[download.downloadId].clientGeo = location;
+        }
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    writeStore(store);
+  }
+
+  return downloads;
+}
+
 function appendDownloadEvent(download, type, payload = {}) {
   download.events.unshift({
     type,
@@ -674,21 +697,22 @@ app.post('/api/downloads/fail', (req, res) => {
   res.json({ success: true, download });
 });
 
-app.get('/api/downloads', (req, res) => {
+app.get('/api/downloads', async (req, res) => {
   const store = readStore();
-  const downloads = Object.values(store.downloads)
+  const downloads = await enrichDownloadsWithLocation(store, Object.values(store.downloads)
     .map(computeDownloadMetrics)
-    .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0));
+    .sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0)));
   res.json({ total: downloads.length, downloads });
 });
 
-app.get('/api/downloads/:downloadId', (req, res) => {
+app.get('/api/downloads/:downloadId', async (req, res) => {
   const store = readStore();
   const download = store.downloads[req.params.downloadId];
   if (!download) {
     return res.status(404).json({ error: 'Download not found' });
   }
-  res.json({ download: computeDownloadMetrics(download) });
+  const [enrichedDownload] = await enrichDownloadsWithLocation(store, [computeDownloadMetrics(download)]);
+  res.json({ download: enrichedDownload });
 });
 
 app.get('/api/events', (req, res) => {

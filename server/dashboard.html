@@ -233,6 +233,11 @@
       return `<span class="tag warn">${status}</span>`;
     }
 
+    function fmtLocation(location, fallback = '未知') {
+      const text = [location?.country, location?.region, location?.city].filter(Boolean).join(' / ');
+      return text || fallback;
+    }
+
     async function loadData() {
       const [statsRes, proxiesRes, downloadsRes, eventsRes] = await Promise.all([
         fetch('/api/stats'),
@@ -264,7 +269,7 @@
               <div class="mono">${proxy.baseUrl}</div>
             </td>
             <td>${badge(proxy.healthy ? 'online' : 'offline')}</td>
-            <td>${[proxy.location.country, proxy.location.region, proxy.location.city].filter(Boolean).join(' / ') || '-'}</td>
+            <td>${fmtLocation(proxy.location)}</td>
             <td>${proxy.speedTest.bandwidthMbps || 0} Mbps / ${proxy.speedTest.latencyMs || '-'} ms</td>
             <td>${fmtBytes(proxy.traffic.totalBytes)} / ${proxy.traffic.requestCount || 0} req</td>
             <td>${fmtTime(proxy.lastHeartbeatAt)}</td>
@@ -281,7 +286,7 @@
             <td class="mono">${item.downloadId}</td>
             <td>${item.image}:${item.tag}</td>
             <td>${item.arch}</td>
-            <td>${[item.clientGeo?.country, item.clientGeo?.region, item.clientGeo?.city].filter(Boolean).join(' / ') || (item.clientIp || '-')}</td>
+            <td>${fmtLocation(item.clientGeo)}</td>
             <td>${item.proxyId || '-'}</td>
             <td>${badge(item.status)}</td>
             <td>${fmtBytes(item.size)}</td>

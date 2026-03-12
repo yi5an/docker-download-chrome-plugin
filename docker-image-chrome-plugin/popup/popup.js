@@ -18,6 +18,20 @@ document.addEventListener('DOMContentLoaded', function () {
     saveAuthBtn.addEventListener('click', saveDockerAuth);
   }
 
+  const openHomeBtn = document.getElementById('open-home-btn');
+  if (openHomeBtn) {
+    openHomeBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('home.html') });
+    });
+  }
+
+  const openWelcomeBtn = document.getElementById('open-welcome-btn');
+  if (openWelcomeBtn) {
+    openWelcomeBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+    });
+  }
+
   // 加载Docker Hub认证信息
   function loadDockerAuth() {
     chrome.storage.local.get(['dockerUsername', 'dockerPassword'], function(result) {
