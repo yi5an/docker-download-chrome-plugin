@@ -1,0 +1,3300 @@
+{
+  "meta": {
+    "createdAt": "2026-03-11T07:03:22.253Z",
+    "updatedAt": "2026-03-11T12:11:27.925Z"
+  },
+  "proxies": {
+    "proxy-local": {
+      "proxyId": "proxy-local",
+      "name": "proxy-local",
+      "baseUrl": "http://127.0.0.1:7001",
+      "proxyPath": "/proxy?url=",
+      "trackPath": "/track",
+      "provider": "upstream:http://127.0.0.1:7890",
+      "location": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "tags": [],
+      "status": "online",
+      "connectivity": "reachable",
+      "speedTest": {
+        "bandwidthMbps": 0,
+        "latencyMs": 1424,
+        "testedAt": "2026-03-11T12:11:27.924Z",
+        "target": "https://registry-1.docker.io/v2/"
+      },
+      "traffic": {
+        "bytesIn": 54183242,
+        "bytesOut": 54183242,
+        "totalBytes": 54183242,
+        "requestCount": 12,
+        "lastReportedAt": "2026-03-11T12:11:27.924Z"
+      },
+      "health": {
+        "successRate": 1,
+        "lastError": "",
+        "failureCount": 0,
+        "healthy": true
+      },
+      "capabilities": {
+        "blobCache": true,
+        "maxConcurrentRequests": 20,
+        "maxResponseSize": 10485760000
+      },
+      "recentDownloads": [
+        {
+          "id": "7b349eab-564d-4da4-a891-879bf1528b10",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:3eebdd46086e79081ebe2bc6d8671789c0870d50cff561e9e7f23843901a41bf",
+          "bytes": 1400,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:46.141Z"
+        },
+        {
+          "id": "246c357d-e122-44f5-a9d2-2d6f05c7bd15",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:eb94bb667595452b45df7e159cdb2c5b2e2b04b237d954832e76356a880899e9",
+          "bytes": 1212,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:42.758Z"
+        },
+        {
+          "id": "11b89bea-ab6c-43db-b405-6846e1e82d6b",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:1ed86b568c8c4c30133085db70fe731ffb9028002520387929cc838b32eb79f3",
+          "bytes": 405,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:37.232Z"
+        },
+        {
+          "id": "968b38ac-3d23-47d7-99b4-dfbf99fd3eee",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:6c9cf72f7187c4314323c27f69823304d8e47ab6fb8fce4c8d80de0b31f3a803",
+          "bytes": 956,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:34.464Z"
+        },
+        {
+          "id": "a18d92b7-4aae-46ba-aa00-48d8ab5ae0ca",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:9c2912e19a591dbb9a2fc44a4b540c3a67d9828becd997fc6663b968931711a5",
+          "bytes": 629,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:30.372Z"
+        },
+        {
+          "id": "9b35516e-293d-47ca-9410-e27d4df63c8d",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:64b6d51020aabff840b2eb7249b67a01bb92b9a2ddd6471fe06a2926b0bbb53b",
+          "bytes": 26198600,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:27.157Z"
+        },
+        {
+          "id": "4d3f81b5-959e-4940-bc5e-36535e6926bf",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:280a075cc1d2a97445b9f4430aa9774bfc38fc4217b7fc9d6a7b04e7e431cb65",
+          "bytes": 27947608,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:17.592Z"
+        },
+        {
+          "id": "800df54e-f3da-498c-850d-8504d2f863ed",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:2ffca6828a51736073e95b05d9d8ae2c5059246a4377d2b9d1156a11ae846892",
+          "bytes": 9097,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:11.232Z"
+        },
+        {
+          "id": "317ba42c-c282-4b37-8ab9-90470aee00ed",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+          "bytes": 5407,
+          "status": "cache-hit",
+          "fromCache": true,
+          "timestamp": "2026-03-11T09:31:08.480Z"
+        },
+        {
+          "id": "533462e9-dcc5-47ed-ae88-485a7e4ce0db",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/sha256:d0cfc1dc8a48c60923a8418193fb100f90fbf8adf85c58654cbe82a15d7439ba",
+          "bytes": 2292,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:08.471Z"
+        },
+        {
+          "id": "7f6ec3f4-dc85-4dc5-a7d9-2c638666d3ef",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/trixie",
+          "bytes": 10229,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:07.000Z"
+        },
+        {
+          "id": "f05ab9ab-3980-4cf7-a18d-2a0491ce4a4a",
+          "proxyId": "proxy-local",
+          "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+          "image": "library/nginx",
+          "tag": "trixie",
+          "arch": "arm/v5",
+          "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+          "bytes": 5407,
+          "status": "completed",
+          "fromCache": false,
+          "timestamp": "2026-03-11T09:31:03.752Z"
+        }
+      ],
+      "createdAt": "2026-03-11T09:30:24.493Z",
+      "registeredAt": "2026-03-11T09:30:24.493Z",
+      "lastHeartbeatAt": "2026-03-11T12:11:27.924Z",
+      "updatedAt": "2026-03-11T12:11:27.925Z"
+    }
+  },
+  "downloads": {
+    "94bdb7d5-76da-48a7-9045-6abf896f04ce": {
+      "downloadId": "94bdb7d5-76da-48a7-9045-6abf896f04ce",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "size": 0,
+      "sourceUrl": "https://hub.docker.com/_/busybox/tags",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "selectedProxy": {
+        "proxyId": "proxy-mmlpysik-z13gfw83",
+        "name": "proxy-mmlpysik-z13gfw83",
+        "baseUrl": "http://127.0.0.1:7000",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 1380,
+          "testedAt": "2026-03-11T07:32:26.283Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 0,
+          "bytesOut": 0,
+          "totalBytes": 0,
+          "requestCount": 0,
+          "lastReportedAt": "2026-03-11T07:32:26.283Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T07:32:26.283Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T07:33:27.763Z",
+      "startedAt": "2026-03-11T07:33:27.763Z",
+      "completedAt": null,
+      "failedAt": "2026-03-11T07:33:27.791Z",
+      "status": "failed",
+      "success": false,
+      "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "failed",
+          "timestamp": "2026-03-11T07:33:27.791Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]"
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T07:33:27.763Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": ""
+        }
+      ]
+    },
+    "5f32af08-fbd0-4279-84d9-713d1c54af0e": {
+      "downloadId": "5f32af08-fbd0-4279-84d9-713d1c54af0e",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "size": 0,
+      "sourceUrl": "https://hub.docker.com/_/busybox/tags",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "selectedProxy": {
+        "proxyId": "proxy-mmlpysik-z13gfw83",
+        "name": "proxy-mmlpysik-z13gfw83",
+        "baseUrl": "http://127.0.0.1:7000",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 2959,
+          "testedAt": "2026-03-11T07:49:28.252Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 0,
+          "bytesOut": 0,
+          "totalBytes": 0,
+          "requestCount": 0,
+          "lastReportedAt": "2026-03-11T07:49:28.252Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T07:49:28.252Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T07:49:46.016Z",
+      "startedAt": "2026-03-11T07:49:46.016Z",
+      "completedAt": null,
+      "failedAt": "2026-03-11T07:49:46.030Z",
+      "status": "failed",
+      "success": false,
+      "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "failed",
+          "timestamp": "2026-03-11T07:49:46.030Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]"
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T07:49:46.016Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": ""
+        }
+      ]
+    },
+    "df4f9250-73ea-4ec6-ba2e-dbce9edef433": {
+      "downloadId": "df4f9250-73ea-4ec6-ba2e-dbce9edef433",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "size": 0,
+      "sourceUrl": "https://hub.docker.com/_/busybox/tags",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "selectedProxy": {
+        "proxyId": "proxy-mmlpysik-z13gfw83",
+        "name": "proxy-mmlpysik-z13gfw83",
+        "baseUrl": "http://127.0.0.1:7000",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 2435,
+          "testedAt": "2026-03-11T08:13:28.337Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 0,
+          "bytesOut": 0,
+          "totalBytes": 0,
+          "requestCount": 0,
+          "lastReportedAt": "2026-03-11T08:13:28.337Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T08:13:28.337Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T08:15:28.015Z",
+      "startedAt": "2026-03-11T08:15:28.015Z",
+      "completedAt": null,
+      "failedAt": "2026-03-11T08:15:28.034Z",
+      "status": "failed",
+      "success": false,
+      "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "failed",
+          "timestamp": "2026-03-11T08:15:28.034Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": "获取清单失败: Failed to get token for image: library/busybox. Last error: All strategies failed. Details: [ PROXY: Failed to fetch ]"
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T08:15:28.016Z",
+          "detail": "",
+          "proxyId": "proxy-mmlpysik-z13gfw83",
+          "size": 0,
+          "error": ""
+        }
+      ]
+    },
+    "a088fcc4-e1d2-4f38-a49b-816939382cd5": {
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "size": 712796,
+      "sourceUrl": "https://hub.docker.com/_/busybox/tags",
+      "proxyId": "proxy-local",
+      "selectedProxy": {
+        "proxyId": "proxy-local",
+        "name": "proxy-local",
+        "baseUrl": "http://127.0.0.1:7001",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 1985,
+          "testedAt": "2026-03-11T08:21:32.539Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 0,
+          "bytesOut": 0,
+          "totalBytes": 0,
+          "requestCount": 0,
+          "lastReportedAt": "2026-03-11T08:21:32.539Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T08:21:32.539Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T08:22:29.105Z",
+      "startedAt": "2026-03-11T08:22:29.105Z",
+      "completedAt": "2026-03-11T08:22:45.471Z",
+      "failedAt": null,
+      "status": "completed",
+      "success": true,
+      "error": "",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "completed",
+          "timestamp": "2026-03-11T08:22:45.471Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T08:22:29.105Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        }
+      ]
+    },
+    "40e5a4a3-f72a-43c4-a927-5467128b6ff5": {
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "size": 62938940,
+      "sourceUrl": "https://hub.docker.com/_/nginx/tags",
+      "proxyId": "proxy-local",
+      "selectedProxy": {
+        "proxyId": "proxy-local",
+        "name": "proxy-local",
+        "baseUrl": "http://127.0.0.1:7001",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 1448,
+          "testedAt": "2026-03-11T09:16:17.189Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 736807,
+          "bytesOut": 736807,
+          "totalBytes": 736807,
+          "requestCount": 7,
+          "lastReportedAt": "2026-03-11T09:16:17.189Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T09:16:17.189Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T09:16:33.032Z",
+      "startedAt": "2026-03-11T09:16:33.032Z",
+      "completedAt": "2026-03-11T09:17:17.504Z",
+      "failedAt": null,
+      "status": "completed",
+      "success": true,
+      "error": "",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "completed",
+          "timestamp": "2026-03-11T09:17:17.504Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T09:16:33.032Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        }
+      ]
+    },
+    "a2bee007-c9bf-44fa-a838-54c24ad5237d": {
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "size": 54150810,
+      "sourceUrl": "https://hub.docker.com/_/nginx/tags",
+      "proxyId": "proxy-local",
+      "selectedProxy": {
+        "proxyId": "proxy-local",
+        "name": "proxy-local",
+        "baseUrl": "http://127.0.0.1:7001",
+        "proxyPath": "/proxy?url=",
+        "trackPath": "/track",
+        "provider": "upstream:http://127.0.0.1:7890",
+        "location": {
+          "countryCode": "",
+          "country": "",
+          "region": "",
+          "city": ""
+        },
+        "speedTest": {
+          "bandwidthMbps": 0,
+          "latencyMs": 1468,
+          "testedAt": "2026-03-11T09:30:25.963Z",
+          "target": "https://registry-1.docker.io/v2/"
+        },
+        "status": "online",
+        "connectivity": "reachable",
+        "traffic": {
+          "bytesIn": 0,
+          "bytesOut": 0,
+          "totalBytes": 0,
+          "requestCount": 0,
+          "lastReportedAt": "2026-03-11T09:30:25.963Z"
+        },
+        "capabilities": {
+          "blobCache": true,
+          "maxConcurrentRequests": 20,
+          "maxResponseSize": 10485760000
+        },
+        "lastHeartbeatAt": "2026-03-11T09:30:25.963Z"
+      },
+      "clientGeo": {
+        "countryCode": "",
+        "country": "",
+        "region": "",
+        "city": ""
+      },
+      "clientIp": "::ffff:127.0.0.1",
+      "requestedAt": "2026-03-11T09:31:02.547Z",
+      "startedAt": "2026-03-11T09:31:02.547Z",
+      "completedAt": "2026-03-11T09:31:46.200Z",
+      "failedAt": null,
+      "status": "completed",
+      "success": true,
+      "error": "",
+      "pluginVersion": "0.1.4",
+      "metadata": {},
+      "events": [
+        {
+          "type": "completed",
+          "timestamp": "2026-03-11T09:31:46.200Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        },
+        {
+          "type": "started",
+          "timestamp": "2026-03-11T09:31:02.547Z",
+          "detail": "",
+          "proxyId": "proxy-local",
+          "size": 0,
+          "error": ""
+        }
+      ],
+      "durationMs": 43653,
+      "averageSpeedBytes": 1240483.13
+    }
+  },
+  "proxyDownloadEvents": [
+    {
+      "id": "7b349eab-564d-4da4-a891-879bf1528b10",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:3eebdd46086e79081ebe2bc6d8671789c0870d50cff561e9e7f23843901a41bf",
+      "bytes": 1400,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:46.141Z"
+    },
+    {
+      "id": "246c357d-e122-44f5-a9d2-2d6f05c7bd15",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:eb94bb667595452b45df7e159cdb2c5b2e2b04b237d954832e76356a880899e9",
+      "bytes": 1212,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:42.758Z"
+    },
+    {
+      "id": "11b89bea-ab6c-43db-b405-6846e1e82d6b",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:1ed86b568c8c4c30133085db70fe731ffb9028002520387929cc838b32eb79f3",
+      "bytes": 405,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:37.232Z"
+    },
+    {
+      "id": "968b38ac-3d23-47d7-99b4-dfbf99fd3eee",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:6c9cf72f7187c4314323c27f69823304d8e47ab6fb8fce4c8d80de0b31f3a803",
+      "bytes": 956,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:34.464Z"
+    },
+    {
+      "id": "a18d92b7-4aae-46ba-aa00-48d8ab5ae0ca",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:9c2912e19a591dbb9a2fc44a4b540c3a67d9828becd997fc6663b968931711a5",
+      "bytes": 629,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:30.372Z"
+    },
+    {
+      "id": "9b35516e-293d-47ca-9410-e27d4df63c8d",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:64b6d51020aabff840b2eb7249b67a01bb92b9a2ddd6471fe06a2926b0bbb53b",
+      "bytes": 26198600,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:27.157Z"
+    },
+    {
+      "id": "4d3f81b5-959e-4940-bc5e-36535e6926bf",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:280a075cc1d2a97445b9f4430aa9774bfc38fc4217b7fc9d6a7b04e7e431cb65",
+      "bytes": 27947608,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:17.592Z"
+    },
+    {
+      "id": "800df54e-f3da-498c-850d-8504d2f863ed",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:2ffca6828a51736073e95b05d9d8ae2c5059246a4377d2b9d1156a11ae846892",
+      "bytes": 9097,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:11.232Z"
+    },
+    {
+      "id": "317ba42c-c282-4b37-8ab9-90470aee00ed",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+      "bytes": 5407,
+      "status": "cache-hit",
+      "fromCache": true,
+      "timestamp": "2026-03-11T09:31:08.480Z"
+    },
+    {
+      "id": "533462e9-dcc5-47ed-ae88-485a7e4ce0db",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/sha256:d0cfc1dc8a48c60923a8418193fb100f90fbf8adf85c58654cbe82a15d7439ba",
+      "bytes": 2292,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:08.471Z"
+    },
+    {
+      "id": "7f6ec3f4-dc85-4dc5-a7d9-2c638666d3ef",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/trixie",
+      "bytes": 10229,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:07.000Z"
+    },
+    {
+      "id": "f05ab9ab-3980-4cf7-a18d-2a0491ce4a4a",
+      "proxyId": "proxy-local",
+      "downloadId": "a2bee007-c9bf-44fa-a838-54c24ad5237d",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "arm/v5",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+      "bytes": 5407,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:31:03.752Z"
+    },
+    {
+      "id": "1f099d6f-146b-4603-9406-6f07478271ab",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:9eef040df109a68da4ee0f20ef79c6a5a3b4942ac19e68422e785632684fcde3",
+      "bytes": 1397,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:17.438Z"
+    },
+    {
+      "id": "dee057b4-bc66-48c9-ac59-6e3c50fbce1b",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:79697674b8970919d82181f2856f2494024570b22db3103cc062d6552eccddbd",
+      "bytes": 1208,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:14.585Z"
+    },
+    {
+      "id": "6be11950-c156-4368-8a8b-994dcd000508",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:18a071c04bd15da01eff3b9f14e784c765ae4e2220ba2041a02d51d55e53e091",
+      "bytes": 403,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:09.839Z"
+    },
+    {
+      "id": "722ccace-8d68-4c4f-a6d9-d2c724149e04",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:df9da45c1db2401fec7485da87d95235e97e1824cb70c5900fea4fb74a87ba6f",
+      "bytes": 954,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:06.903Z"
+    },
+    {
+      "id": "b5fb3724-0759-42ee-a489-9e79d8c4bb8a",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:a9d395129dcefbfb212cd08db7cf1f70d256eefd83c2458c45e18a365b0a5bd0",
+      "bytes": 629,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:03.070Z"
+    },
+    {
+      "id": "d0a13095-caff-4d98-9671-aae0cfd7caca",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:75a1d70aee5027b89aeb5eec54823d28982ec97ade2fc5d8837281ecee4dc7af",
+      "bytes": 33155717,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:17:00.257Z"
+    },
+    {
+      "id": "61dfda32-d6b2-4246-a909-4df6b0d4d8ba",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:206356c42440674ecbdf1070cf70ce8ef7885ac2e5c56f1ecf800b758f6b0419",
+      "bytes": 29778632,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:16:52.208Z"
+    },
+    {
+      "id": "ac7cf9c9-683a-42f1-9bdd-45de6e2cfada",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/blobs/sha256:99133eed2307147a04b4ad4a37582c76a9c5c76ae3d9aad90bec0f4b8878d4c0",
+      "bytes": 9092,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:16:43.276Z"
+    },
+    {
+      "id": "3cdfd86a-8ef0-4fa6-8499-16138c1d233d",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+      "bytes": 5407,
+      "status": "cache-hit",
+      "fromCache": true,
+      "timestamp": "2026-03-11T09:16:38.534Z"
+    },
+    {
+      "id": "4fa54413-6c2b-440e-b700-f960712438de",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/sha256:a6bead2c897e9e39ca1a2dbd241f96dc181c8d32adcb6201258624fb37d2c7fe",
+      "bytes": 2290,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:16:38.525Z"
+    },
+    {
+      "id": "02232a48-67ad-4ea5-974c-024e435af5a8",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://registry-1.docker.io/v2/library/nginx/manifests/trixie",
+      "bytes": 10229,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:16:36.666Z"
+    },
+    {
+      "id": "7fcfd874-44e5-45c6-92fa-d44c292c5bb3",
+      "proxyId": "proxy-local",
+      "downloadId": "40e5a4a3-f72a-43c4-a927-5467128b6ff5",
+      "image": "library/nginx",
+      "tag": "trixie",
+      "arch": "amd64",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull",
+      "bytes": 5407,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T09:16:34.302Z"
+    },
+    {
+      "id": "9cd6763f-36e0-4d5d-80fe-292d55362c41",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://registry-1.docker.io/v2/library/busybox/blobs/sha256:0917b801bbea351df346b0c7f9d69279bfefde64875650e654a3322e6f7ed2f2",
+      "bytes": 712796,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T08:22:45.447Z"
+    },
+    {
+      "id": "1dedcf08-9fa9-49df-802b-666f04c59de8",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://registry-1.docker.io/v2/library/busybox/blobs/sha256:1a4ae9480932912e2cf7356da5c6c3c7fb067d8f4a56c6288a8f858cabfd1d0b",
+      "bytes": 479,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T08:22:36.762Z"
+    },
+    {
+      "id": "8d724ed4-fb8e-4765-a093-4764fb77e2e5",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/busybox:pull",
+      "bytes": 5413,
+      "status": "cache-hit",
+      "fromCache": true,
+      "timestamp": "2026-03-11T08:22:32.834Z"
+    },
+    {
+      "id": "cba584b9-466d-46cf-92d7-c4dc56ffcd1c",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://registry-1.docker.io/v2/library/busybox/manifests/sha256:b6e07cd1cef049eba27ac02e9456ff2640e5b8cf013579005f717d4eef6ca426",
+      "bytes": 610,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T08:22:32.826Z"
+    },
+    {
+      "id": "acde9469-4765-4046-a00a-4a250b9d2d9d",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://registry-1.docker.io/v2/library/busybox/manifests/unstable-uclibc",
+      "bytes": 6683,
+      "status": "completed",
+      "fromCache": false,
+      "timestamp": "2026-03-11T08:22:31.376Z"
+    },
+    {
+      "id": "b02d0479-fb4f-4819-81f1-9b7687c9797d",
+      "proxyId": "proxy-local",
+      "downloadId": "a088fcc4-e1d2-4f38-a49b-816939382cd5",
+      "image": "library/busybox",
+      "tag": "unstable-uclibc",
+      "arch": "386",
+      "targetUrl": "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/busybox:pull",
+      "bytes": 5413,
+      "status": "cache-hit",
+      "fromCache": true,
+      "timestamp": "2026-03-11T08:22:29.114Z"
+    }
+  ],
+  "trafficSnapshots": [
+    {
+      "id": "781e69aa-9ac3-4b07-9042-5d27aae4a433",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:11:27.924Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b83116db-c290-4e7e-93d6-682b7612c0ac",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:10:29.001Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "cfb45075-059e-46b1-829e-09d84e944248",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:09:28.421Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "5cda39c4-afc0-40d9-81cc-7207068f753a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:08:28.518Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b5412cd4-3a72-4c5f-b5d8-3baffd7066ce",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:07:28.423Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "edabfdd0-2f39-4604-b131-18109f1003bc",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:06:27.781Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e1c6a5f8-cd65-45cd-916e-1108edfb828d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:05:27.877Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "748c7457-59a4-49cf-b69d-402c96381aab",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:04:27.973Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "7d4e8b71-1fee-421f-91da-a82f5895c3a4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:03:27.732Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d586bf5d-0065-48fe-a671-405d213f16f7",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:02:27.686Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "84b84d20-2a3a-4f86-937a-412ac382a56f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:01:27.925Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "2fd1a390-b52b-4fb3-95ff-73c6670f9f2b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T12:00:27.641Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f8af4721-da85-4075-b0d7-e397ac583e42",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:59:27.700Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d6b1b0da-6019-45a8-ab3b-80f46aff6057",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:58:27.604Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0e0fffab-72f2-4946-afec-603e33df78c9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:57:28.030Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "1f09c498-d82f-451f-9d7f-60569c831c01",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:56:28.127Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4f1e160f-1197-424d-b151-cb1a4abf6d71",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:55:28.009Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4034bd92-8d00-454f-99c9-77b623d99b01",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:54:27.454Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "088b84a5-4da9-4627-b56b-f35fe09e5845",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:53:28.621Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "cb748c02-02f1-4af9-9443-ac7a99d3991a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:52:27.486Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0c151c76-cb57-4d0e-8f26-49fe591f5a28",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:51:29.621Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "feeb886b-6316-422e-b054-e4591022449e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:50:28.601Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d19768bf-f0cf-4287-b48a-60ac89d4f4c6",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:49:28.557Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "fa185230-fe32-4b7f-9a70-15b7600f1d72",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:48:27.358Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "073378d7-113b-48e2-b4cb-22df5e46b0a1",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:47:27.294Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "1ced19c2-bdf2-43e3-b45c-c0d1a408de76",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:46:27.274Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "3427851c-e5a5-4a72-91ed-b5088db71070",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:45:27.260Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "ca13caf8-113f-4bbc-a4de-c66e26f70660",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:44:28.660Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0125e39b-a5f1-46fc-a0b7-d93ca014b6d4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:43:27.290Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0b2b11ed-5bbd-4f8c-b56b-023f1b4d9f64",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:42:28.377Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "24d25cdb-a75c-4a1c-a1b3-f6cb16ca860f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:41:28.158Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "fbbadf61-c109-4bac-b33c-9e59503de6c8",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:40:27.208Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d17ce61a-fb21-4225-8d15-7fbda2bf2b02",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:39:27.110Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "8768a0e0-f308-4160-bf68-91a5ec135362",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:38:27.596Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c8b75be0-41b2-415f-9501-edafce36e476",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:37:27.065Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "40f82f6e-eb9d-4b87-93fd-2ac4015f48df",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:36:27.979Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "a00fc094-acae-4f67-9508-7e050594838b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:35:27.699Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "25e1fa11-fdd0-44e8-99e6-93f7e0e92e1d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:34:28.000Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "af60d650-f389-4941-a625-1cb815c6ddf4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:33:27.485Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "cba8be42-0d6d-4484-9ced-c02efd8c13c8",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:32:26.894Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "49f9aaf7-f8ec-4cee-be6e-7248b65aa7ab",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:31:27.983Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "502fb0e4-585a-4eed-988b-8de863ff9a65",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:30:26.842Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "55ffe773-0148-4e54-a483-7ca27de1351b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:29:26.841Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "60bba777-eb38-478c-bca0-7c0f116a54fd",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:28:27.828Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f7aaa848-ff5a-4e21-97ff-dd30bd05d605",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:27:26.964Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f18c6e1b-0069-45e2-a3ba-0d950822fd52",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:26:26.930Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c07860ce-88d5-4600-bc31-25b87a1a53a7",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:25:27.345Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "826e311a-4641-4044-a01d-f9ce361a521b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:24:26.803Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "9e25e473-ddeb-4eb8-9853-fe1eba101837",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:23:27.658Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4f22bc62-adfc-43a1-a119-8a05edcb02a4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:22:27.716Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b49b2293-aae9-4dbf-9e7f-9da2e84418c6",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:21:26.782Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "ab52c247-aaf0-42d2-ae6e-a7193febdfc9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:20:26.671Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "fdafff6b-8d73-4f29-a605-d6b20a572053",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:19:27.687Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "bf568007-66a2-408c-84ac-3dbc29797530",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:18:26.655Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "33eef739-bb23-4043-8435-dda5a8345133",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:17:27.195Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "04dc3a0b-cdc9-4a95-8fb2-496908560713",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:16:27.113Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "8981bf7b-8c0f-401f-a40b-4243bf57c454",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:15:26.631Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "53a453b6-0eaa-4b3a-9e2a-8e86ba66288c",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:14:28.278Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "79fd1df7-1cae-4435-aab9-2f315d1d9c13",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:13:28.068Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "3d06d5cf-4eb7-4059-b2c6-c82239eff1e2",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:12:26.618Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0830081e-ced0-4bcf-bbbd-f9b675bc39ca",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:11:26.597Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4a47baa7-c73d-429b-ac82-8d0bc13fbad3",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:10:26.486Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c8009158-c64a-4d7d-93cb-1e29952e9ac0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:09:26.581Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c129dad8-41cf-4ad4-8437-a83763720282",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:08:26.408Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "2f2a66c1-aac4-48f2-9dd6-769129370d1f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:07:26.357Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "faf15b91-a8b2-453e-96db-0318fce38f62",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:06:26.450Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "56745419-568d-4896-a4e9-99012069a8e0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:05:26.323Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "22ad5d77-a80b-426f-abda-05becdaaa16a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:04:27.321Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "43ab26eb-a365-42cd-b6cb-fb9592dcd3f9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:03:26.808Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "5d30961e-c729-4c4a-bbc1-8581ea85b43d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:02:26.921Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "17c4e682-7d92-42a9-902e-5232b4e86205",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:01:27.204Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "3e15c7d7-4151-4952-a0a0-586df84243b3",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T11:00:27.547Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "14b1c7b8-ed68-4cd4-834e-17472b38eaf9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:59:26.163Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "578b67b8-835c-4854-be8c-52a5860b9ed5",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:58:26.158Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "05017765-cdd1-4c52-837a-205d4401eb1b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:57:26.299Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "7f233c24-a713-4fd7-a26e-c313a5e8234c",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:56:28.286Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4edffd30-dd65-4c5d-b4e1-e34ac209ac3c",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:55:26.073Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "8c0766c7-3d77-441e-84d7-2f3f4a62663c",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:54:27.663Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "8c1fddd2-f577-4904-af2d-cb57ba44eb50",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:53:26.739Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "dd841585-7b68-49a1-8fd8-78f3f3b706ff",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:52:26.020Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "604a9284-98eb-49d9-9191-af88529c3a10",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:51:26.030Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "430d8b0e-7a22-4300-90be-e310bc80bc7e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:50:25.987Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "3710b349-0cda-4c71-b3ab-8cef7a6a5724",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:49:26.613Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "2443b64e-0bb1-458f-bbd6-db1cb2d60876",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:48:25.995Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "2aad3acc-208c-44dd-9fae-95d5b3456b57",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:47:26.497Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0931762d-addb-4882-91fd-e1c812265e79",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:46:25.844Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b252e531-d282-41cd-8d30-ebf93b20d5cf",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:45:26.076Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "5513237a-6aff-4dcf-afc9-47531eb698f8",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:44:25.931Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f6436ff4-07e7-4235-b637-407bdacce40a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:43:25.823Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "eb0f3eeb-defe-4ccc-beb4-8f4719d0366f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:42:26.852Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "52d30019-acda-4a32-bfad-229f31ba4b3d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:41:25.780Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0f11590d-071b-4ae6-beb3-c888f0f2a1e3",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:40:25.749Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "11dec54e-5481-4fed-9f2c-862c82bc2354",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:39:25.732Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "bd77e02b-5f98-4397-b41f-9bb12be50389",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:38:25.709Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e4625685-63a0-45a0-99e6-b176c4d155a2",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:37:25.715Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "1cc88aff-f9f6-40ce-8192-9986ff48cd98",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:36:25.716Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "001f297d-24e0-42bb-9ccf-a6afa83c6938",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:35:26.836Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "729477b4-ba32-4dd6-a7eb-447e86a8891a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:34:25.703Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c39ae734-6872-4442-b176-e29a01144c0a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:33:26.209Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d1316a55-e3ff-4203-b1ed-23fbc3894f66",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:32:25.958Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "12d58452-d163-4b57-9cbe-146ff791d33f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:31:26.214Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d2253802-e466-443f-836c-609523085015",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:30:25.604Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e71f34c4-9e74-4a7d-8452-3fa58a1ff05b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:29:27.424Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "cb191690-6af3-471e-a536-809982b15e5a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:28:25.570Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b79cbd8b-c82f-497a-bbd4-1ba32f9bf099",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:27:26.288Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "6d278491-428c-4216-ab6f-3a1d27741ca9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:26:25.563Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f05432dd-87bb-4304-83ce-2201493a8d19",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:25:26.175Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "85bbd556-e1df-4400-88cf-fe714904a699",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:24:27.090Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b6a93617-4052-415e-9a10-6915cea4699b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:23:26.438Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e0255e3f-a5ba-4e95-b743-646fb2ef9366",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:22:26.052Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "8cf3be23-cfe8-47e3-81c2-14a6ecd09d52",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:21:25.433Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "4b025097-0cdd-4795-9ef1-5cff7606d476",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:20:25.333Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d3eb4bba-9bdf-4a01-baa8-691b03304ce5",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:19:25.395Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "bf48f0d4-fa45-402c-b1b1-d68efd3f4f44",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:18:25.432Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "1b159c7d-653c-47b2-bb78-098bb0968846",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:17:25.409Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "653f8a71-5d93-4cde-b132-aaf13310bf39",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:16:25.332Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "427bac2e-7141-42ee-b06c-20077f2fd8e0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:15:25.800Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "96b75b9c-12dd-4c7d-bfa1-094a0bf62916",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:14:25.294Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0aec1c2a-e3e9-4518-b4fc-afd8decc6bc4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:13:25.803Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "23c30625-fc9b-40d9-8534-d4b5fc64d354",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:12:25.183Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "232fd58e-ffc3-47ba-b086-03104a3481cf",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:11:25.711Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "7bc7f45d-0946-4374-b46a-a5d4c76a6f52",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:10:25.191Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "19242a04-44c6-4af2-a85c-42b25a274550",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:09:25.094Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0fa57f1d-5605-43b7-bf8a-acdb8e174139",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:08:25.836Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "9a9c9ecc-95d1-4e29-afb4-484cb99535a6",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:07:25.095Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "ceda6241-70e5-436f-80b2-f651e6dc77d4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:06:24.979Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0d30088a-4c3e-4650-80f4-0857d7ac1179",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:05:25.083Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "465cfc09-f518-48de-9297-9c0b28c72261",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:04:24.978Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "45a345ae-4f13-4396-b451-3bb8945b0013",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:03:24.910Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "132e0868-f99b-4bb1-8f48-121a424b0345",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:02:24.882Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "da2901c5-564e-4388-a651-41439f18ae7f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:01:25.041Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "fc45174b-7061-4705-9d83-1fbd6fc59fe0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T10:00:24.841Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "5466cbd0-7202-4d28-a5df-1e95772f93e1",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:59:24.845Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e75f0710-25e8-4062-a067-64a5d18030ce",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:58:26.977Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "ddcc0894-945f-4a0b-8fa5-bd1d4f0dd701",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:57:24.858Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "47c9f157-41ac-4167-9698-5b3f6c0c91f4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:56:24.800Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e8dfcc6c-44fc-4b40-9f84-85c1813f2f35",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:55:24.977Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "16386851-9c6c-4a12-92d1-1ecf9aa3bb7e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:54:25.556Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "e726fdd3-1912-4f61-aa4a-6e91d4c6d589",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:53:24.714Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "b8280d0d-03bc-4126-b799-c8508be98903",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:52:24.789Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "af134978-9b7a-4a93-93e8-cfa24a8bac63",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:51:25.886Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "6da3167b-85ed-4255-bcfe-28bfb581632a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:50:24.632Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "513da08f-5435-4653-b793-3e1dfee32984",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:49:24.648Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "09b11c05-91bd-4b54-bc14-c3f29d154a25",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:48:25.218Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "09c20838-d609-40ee-97fd-d8187a1f5a32",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:47:24.820Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "7488fad9-9beb-4cf2-9420-861247edbdd6",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:46:24.933Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "36b95d80-f3fa-43e8-a453-594c885ac064",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:45:24.562Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "59f29fa5-a962-4a68-9a65-3efe5a6044c5",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:44:24.518Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "05c579d5-2e5a-49c0-adf0-bd7da1b47b8b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:43:27.721Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c6b16463-6198-4f46-85d4-47a60e9cc094",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:42:25.662Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "758e4f52-c53f-47f0-aae8-037edc3e0bbe",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:41:24.686Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "24ed9674-aca4-434c-a76c-88b6e4213265",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:40:24.474Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "59019105-ac38-47c5-8db5-bc85b0b193ac",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:39:24.474Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "589ffd9a-fc50-4518-a544-154d76c47c65",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:38:24.537Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "0df2352e-f1cd-431f-8c69-f8bd28d4d9cc",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:37:24.457Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "f2ed53b1-bb6c-4001-9f5e-f2d2b8ab3398",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:36:25.002Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "dd7d3f9a-b026-463b-842d-d6f9aba5a8e9",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:35:24.453Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "c78ed7f1-f194-42ab-b15b-a14aa24e90e6",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:34:24.494Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "1f7e4a9a-ffd2-4c61-984c-d6f8e379035d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:33:24.441Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "08478345-7cb0-42f0-a7a9-14a00eaed8d8",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:32:25.060Z",
+      "bytesIn": 54183242,
+      "bytesOut": 54183242,
+      "totalBytes": 54183242,
+      "requestCount": 12
+    },
+    {
+      "id": "d2c36614-6215-4500-b9bb-31bfeb4e7a4c",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:31:27.921Z",
+      "bytesIn": 54178640,
+      "bytesOut": 54178640,
+      "totalBytes": 54178640,
+      "requestCount": 7
+    },
+    {
+      "id": "23fa13a7-ceb2-40f9-9126-df304e722dbf",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:30:25.963Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "4c0e6f5d-0e03-4717-85be-c0dca032f87e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:25:25.937Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "0e48243f-b0a3-4ef6-b3ca-b22119e2c411",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:24:25.830Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "9c965127-9a04-4c6f-abb7-106cab82810f",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:23:27.526Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "cddfc171-8137-403f-bb41-2560dea137bd",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:22:17.179Z",
+      "bytesIn": 62971365,
+      "bytesOut": 62971365,
+      "totalBytes": 62971365,
+      "requestCount": 12
+    },
+    {
+      "id": "ec72a98e-596b-4487-b6e5-a5d284748c5b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:21:17.185Z",
+      "bytesIn": 62971365,
+      "bytesOut": 62971365,
+      "totalBytes": 62971365,
+      "requestCount": 12
+    },
+    {
+      "id": "655eb914-aaca-4e71-901a-a968279bbd91",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:20:18.874Z",
+      "bytesIn": 62971365,
+      "bytesOut": 62971365,
+      "totalBytes": 62971365,
+      "requestCount": 12
+    },
+    {
+      "id": "f7622d75-4263-476e-83dc-71a39eaf32ec",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:19:17.282Z",
+      "bytesIn": 62971365,
+      "bytesOut": 62971365,
+      "totalBytes": 62971365,
+      "requestCount": 12
+    },
+    {
+      "id": "0e1e650b-9f93-4f83-8062-f8ed5f74dff4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:18:18.225Z",
+      "bytesIn": 62971365,
+      "bytesOut": 62971365,
+      "totalBytes": 62971365,
+      "requestCount": 12
+    },
+    {
+      "id": "50e8ad71-749b-4709-974d-b9c3c01f9283",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:17:17.302Z",
+      "bytesIn": 62969968,
+      "bytesOut": 62969968,
+      "totalBytes": 62969968,
+      "requestCount": 11
+    },
+    {
+      "id": "11c01123-11a5-4fa4-853a-999ff24413aa",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:16:17.189Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "a44f2d1e-bb6a-4c3e-a9eb-c447715b619e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:15:18.343Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "52f1064f-5e90-44e4-a7f0-1ec948ed65a1",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:14:17.836Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "e105382c-ad12-48e8-9c02-3747360ff8e2",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:13:18.820Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "391ef897-7e74-4f67-a6f4-c220b9f2ec4e",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:10:23.521Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "ec736db8-c901-495c-bab4-c7bda30126c0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:09:22.387Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "bca410a6-d991-4932-b421-91b594b6ca65",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:08:23.319Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "e191156e-d0b0-4d99-bfe5-dbe80c13ff04",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T09:07:24.092Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "8b33ec49-4d38-4913-ae43-43889d4486f4",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:36:12.121Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "b61b5d5b-ed51-410f-8b63-fd40d76faad5",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:35:14.623Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "db3d3bc4-730d-4efd-b477-8702917c3f06",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:33:30.877Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "b7efffe5-1407-44ea-9570-497693058dbe",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:32:30.881Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "72d38362-b94b-4774-80d2-e5826341fdac",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:31:30.776Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "7e8c216d-4d33-4ea3-a717-c538eb1ca363",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:30:31.752Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "f15d6c7e-ea83-4add-a886-dc3b8948a976",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:29:34.385Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "2fee9d3d-2236-442d-bde4-1b466cb75fe0",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:28:31.408Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "263c4173-c777-4d86-97ee-ad2e8390b40b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:27:31.690Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "be272bfb-4bc5-444d-bcd7-d4d2c09d84b2",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:26:30.659Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "b9acdc6d-f2c0-425f-b0ed-60683e284f0d",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:25:30.648Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "233fc4d1-0eb0-45a7-a318-60c8b8dba56a",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:24:31.561Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "2fbdeb39-7e17-4a2e-b580-92428502cf32",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:23:30.513Z",
+      "bytesIn": 736807,
+      "bytesOut": 736807,
+      "totalBytes": 736807,
+      "requestCount": 7
+    },
+    {
+      "id": "3bebaef6-1de9-4190-91d6-96ce0998ac33",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:22:30.508Z",
+      "bytesIn": 10826,
+      "bytesOut": 10826,
+      "totalBytes": 10826,
+      "requestCount": 2
+    },
+    {
+      "id": "ca89ecd7-6136-4baf-8e82-44b1ccf1874b",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:21:32.539Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "06e18c78-42f2-45ba-bc8a-c65deb2560d5",
+      "proxyId": "proxy-local",
+      "timestamp": "2026-03-11T08:21:07.649Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "cf84a228-b824-4be6-a5fb-83dcd20b1660",
+      "proxyId": "proxy-mmlrpvef-3hbpl4ca",
+      "timestamp": "2026-03-11T08:20:28.231Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "19a40c12-072b-421a-ba93-58f53d05ee4b",
+      "proxyId": "proxy-mmlrpvef-3hbpl4ca",
+      "timestamp": "2026-03-11T08:19:28.550Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "ef14ce30-3bb0-40ce-84d5-eefc7a3ea08a",
+      "proxyId": "proxy-mmlrmvly-1900rdkq",
+      "timestamp": "2026-03-11T08:19:08.555Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "9cd749b5-67ae-44e4-a5d3-764f0dd4dcfd",
+      "proxyId": "proxy-mmlrmvly-1900rdkq",
+      "timestamp": "2026-03-11T08:18:08.540Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "437d40f6-c3e3-425a-becd-ab1d3c086919",
+      "proxyId": "proxy-mmlrmvly-1900rdkq",
+      "timestamp": "2026-03-11T08:17:08.811Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "a2c8c2d8-7837-4c8f-8ddc-15e8c8b9eb40",
+      "proxyId": "proxy-mmlrk0bu-iie9x1om",
+      "timestamp": "2026-03-11T08:16:56.861Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "10f21d41-713e-4830-baea-87524373e181",
+      "proxyId": "proxy-mmlrk0bu-iie9x1om",
+      "timestamp": "2026-03-11T08:15:56.395Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "78b13555-df7b-4975-84f1-fea1eb3ff2ab",
+      "proxyId": "proxy-mmlrk0bu-iie9x1om",
+      "timestamp": "2026-03-11T08:15:00.851Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "9e1b1fa9-ee87-401d-8c8f-01c27f275ac1",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:13:28.337Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "636e4e59-70e2-4e68-89e4-5dce6279e5f8",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:12:27.968Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "b4bf6e8c-c239-49f8-8ff8-27326a359a33",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:11:27.274Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "f7ee59eb-08bc-4471-a182-ee72aa090115",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:10:27.505Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "91295436-9778-4bfc-a115-221f71d43607",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:09:40.826Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "058afaf0-63c6-425d-8415-528fb752773f",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:08:27.794Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "09d9ce06-8916-4852-979e-ba4f610b27bd",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:07:27.777Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "eb2e3d05-de91-4777-962f-6d359e2e96ec",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:06:27.138Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "fd994f8d-de4d-41d2-a2f8-885d748f68b6",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:05:28.785Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "7c254902-dea8-414c-ba45-3c99cdd92f87",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:04:27.347Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "b626bd41-2727-4eea-ab20-2a96ef2ac0b3",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:03:28.253Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "9847f209-6cc7-45fb-acd4-b5a1e429a341",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:02:30.168Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "787142b8-ed81-47b3-adb0-f66c652f437a",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:01:29.125Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "aee4bbb8-d262-4954-be01-07c7c0c286e0",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T08:00:27.926Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "401ea761-a50c-4d74-bdba-9f03b11b1d80",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:59:27.820Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "7289ece0-c5d4-4246-80e0-141e50867904",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:58:27.565Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "23912fec-a0c6-46c6-95c2-4edb4033db58",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:57:27.691Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "e76e7022-9e94-46aa-8bd0-997dbadd0e31",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:56:26.930Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "e62b279c-d96d-4a2b-8252-203512b52d1e",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:55:27.874Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "a64e14db-16a8-407c-b441-982bb2e568e0",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:54:28.577Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "a564b80a-21ff-4eb2-835d-26a1ef4314d2",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:53:26.784Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "52adfaa8-a2e9-4bfd-a832-09541aa4cc0e",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:52:27.512Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "2f7b1508-4bad-4fb7-98e4-77ecb52302cc",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:51:31.715Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "7507227e-9b81-4d9c-a3f3-9456935fe020",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:50:27.336Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "27c5faf6-1a01-4d8e-841c-5068a1b7f813",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:49:28.252Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "7b4ccfcb-f408-4499-a638-7ec7bdf747fb",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:48:26.883Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "06575e9b-2822-4927-abbd-f768db8c21cc",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:47:27.900Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "a596818b-2ee0-4193-8c6a-4976d055747d",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:46:27.317Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "7dc1c9c7-69ab-41a9-ae6c-705ca4d2c958",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:45:26.661Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "498415a6-fc80-41c3-8668-09bc6011ec89",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:44:26.322Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "6a2f5aab-1133-4396-b513-1d3aff94e0e8",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:43:26.239Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "888d7a30-203a-44ef-9458-2d60a58c9e13",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:42:27.147Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "f6467729-d076-4b46-96b3-b635f5bf619d",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:41:32.340Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "9ca3184f-e172-4e3e-9737-c80f7f92525b",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:40:26.551Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "d9437cdb-5886-4e82-b956-fc3ce686d9d4",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:39:26.588Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "98a4a352-aff0-4371-920d-4887f2acc1dc",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:38:27.742Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "8475686b-9fba-490c-8d9b-e7c736d1d30e",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:37:26.752Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "b4281d83-a662-4cd3-b782-d1996a954ef9",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:36:26.431Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "37eb1221-36d4-40c2-a4cd-764d64775134",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:35:26.394Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "cab34438-d274-4b7c-b11a-48a9fb1d970c",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:34:27.967Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "6c39fc46-9d04-4414-b666-9c02bc4ace73",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:33:28.336Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "3d496cab-4fda-456f-85ce-612964fbd39b",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:32:26.283Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "08bcfb6f-9273-4eaa-8b6e-5a6d1cda77c2",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:31:27.097Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    },
+    {
+      "id": "3361753a-7131-4337-9781-d7df8a475be2",
+      "proxyId": "proxy-mmlpysik-z13gfw83",
+      "timestamp": "2026-03-11T07:30:27.921Z",
+      "bytesIn": 0,
+      "bytesOut": 0,
+      "totalBytes": 0,
+      "requestCount": 0
+    }
+  ]
+}
