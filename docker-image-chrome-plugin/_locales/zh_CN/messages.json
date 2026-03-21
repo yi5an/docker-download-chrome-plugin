@@ -1,0 +1,8 @@
+{
+  "extension_name": {
+    "message": "Docker 镜像一键下载器"
+  },
+  "extension_description": {
+    "message": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。"
+  }
+}

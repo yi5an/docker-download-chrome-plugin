@@ -21,6 +21,29 @@
       border-bottom: 1px solid #eee;
       color: #0066cc;
     }
+    .popup-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+    .popup-topbar h1 {
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    .lang-switch {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid #d9d9d9;
+      background: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
     .task-list {
       margin-bottom: 16px;
     }
@@ -158,7 +181,10 @@
   </style>
 </head>
 <body>
-  <h1>Docker镜像下载器</h1>
+  <div class="popup-topbar">
+    <h1>Docker镜像下载器</h1>
+    <button class="lang-switch" id="language-toggle">EN</button>
+  </div>
   <div style="display: flex; gap: 8px; margin-bottom: 16px;">
     <button id="open-home-btn" style="background: #0f766e; color: white; border: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;">打开主页面</button>
     <button id="open-welcome-btn" style="background: #475569; color: white; border: none; padding: 8px 12px; border-radius: 999px; cursor: pointer; font-size: 12px;">查看使用指引</button>
@@ -166,8 +192,8 @@
 
   <!-- Docker Hub 认证配置 -->
   <div style="background: #fff2f0; border: 1px solid #ffccc7; border-radius: 4px; padding: 12px; margin-bottom: 16px;">
-    <h2 style="margin: 0 0 8px; font-size: 14px;">Docker Hub 认证</h2>
-    <p style="margin: 0 0 8px; font-size: 12px; color: #666;">用于下载私有镜像（如 mcp/playwright）</p>
+    <h2 id="auth-panel-title" style="margin: 0 0 8px; font-size: 14px;">Docker Hub 认证</h2>
+    <p id="auth-panel-body" style="margin: 0 0 8px; font-size: 12px; color: #666;">用于下载私有镜像（如 mcp/playwright）</p>
     <div style="display: flex; flex-direction: column; gap: 8px;">
       <input type="text" id="docker-username" placeholder="Docker Hub 用户名或访问令牌"
              style="width: 100%; padding: 6px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px;">

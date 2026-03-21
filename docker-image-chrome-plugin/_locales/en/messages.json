@@ -1,0 +1,8 @@
+{
+  "extension_name": {
+    "message": "Docker Image Downloader"
+  },
+  "extension_description": {
+    "message": "Download Docker images for a selected architecture directly from Docker Hub pages."
+  }
+}

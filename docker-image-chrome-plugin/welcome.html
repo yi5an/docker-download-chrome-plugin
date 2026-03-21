@@ -6,406 +6,838 @@
   <title>Docker 镜像一键下载器 - 安装引导</title>
   <style>
     :root {
-      --bg: #f4efe4;
-      --panel: rgba(255, 251, 245, 0.88);
-      --panel-strong: rgba(255, 255, 255, 0.94);
-      --text: #1d2433;
-      --muted: #5e6878;
-      --line: rgba(29, 36, 51, 0.12);
-      --accent: #0f766e;
-      --accent-soft: #d8f1eb;
-      --accent-deep: #0b4f55;
-      --ink: #132238;
-      --shadow: 0 28px 60px rgba(38, 50, 56, 0.14);
+      --bg: #08111f;
+      --bg-soft: #0f1d31;
+      --panel: rgba(9, 19, 34, 0.72);
+      --panel-strong: rgba(13, 25, 43, 0.9);
+      --panel-light: rgba(245, 248, 255, 0.92);
+      --line: rgba(157, 179, 214, 0.18);
+      --text: #e8eefc;
+      --muted: #95a4c0;
+      --ink: #112036;
+      --ink-muted: #5f6f89;
+      --accent: #ff7a18;
+      --accent-soft: rgba(255, 122, 24, 0.16);
+      --brand: #32c5ff;
+      --brand-soft: rgba(50, 197, 255, 0.16);
+      --green: #28c76f;
+      --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.32);
+      --shadow-lg: 0 18px 40px rgba(2, 8, 23, 0.22);
       --radius-xl: 32px;
       --radius-lg: 24px;
       --radius-md: 18px;
+      --radius-sm: 14px;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 34%),
-        radial-gradient(circle at 85% 15%, rgba(11, 79, 85, 0.12), transparent 24%),
-        linear-gradient(180deg, #f6f1e7 0%, #eef3f7 100%);
-      font-family: "Avenir Next", "PingFang SC", "Helvetica Neue", sans-serif;
+        radial-gradient(circle at 12% 18%, rgba(50, 197, 255, 0.24), transparent 28%),
+        radial-gradient(circle at 88% 16%, rgba(255, 122, 24, 0.2), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(72, 88, 255, 0.16), transparent 30%),
+        linear-gradient(180deg, #07111d 0%, #091526 42%, #0d1b31 100%);
+      font-family: "Bahnschrift", "Segoe UI Variable", "PingFang SC", sans-serif;
     }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::before {
+      left: -120px;
+      top: 120px;
+      width: 260px;
+      height: 260px;
+      border-radius: 36px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transform: rotate(26deg);
+      background: linear-gradient(135deg, rgba(50, 197, 255, 0.08), rgba(50, 197, 255, 0));
+    }
+
+    body::after {
+      right: -70px;
+      bottom: 90px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 122, 24, 0.16), rgba(255, 122, 24, 0));
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
     .shell {
-      max-width: 1180px;
+      position: relative;
+      z-index: 1;
+      max-width: 1240px;
       margin: 0 auto;
-      padding: 34px 22px 48px;
+      padding: 30px 20px 54px;
     }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--text);
+    }
+
+    .brand-mark {
+      width: 46px;
+      height: 46px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(255, 122, 24, 0.95), rgba(50, 197, 255, 0.95));
+      box-shadow: 0 16px 34px rgba(50, 197, 255, 0.18);
+    }
+
+    .brand-copy strong {
+      display: block;
+      font-size: 16px;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-copy span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-pills {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(10, 21, 38, 0.56);
+      color: var(--text);
+      backdrop-filter: blur(10px);
+      font-size: 13px;
+    }
+
+    .pill strong {
+      font-weight: 800;
+    }
+
+    .lang-switch {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(10, 21, 38, 0.56);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 800;
+      backdrop-filter: blur(10px);
+    }
+
     .hero {
       position: relative;
       overflow: hidden;
-      padding: 34px;
-      margin-bottom: 20px;
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 360px);
-      gap: 22px;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 380px);
+      gap: 20px;
+      padding: 30px;
       border-radius: var(--radius-xl);
-      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(244,249,248,0.92));
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
+      border: 1px solid rgba(157, 179, 214, 0.14);
+      background:
+        linear-gradient(145deg, rgba(11, 22, 38, 0.9), rgba(7, 16, 30, 0.78)),
+        linear-gradient(145deg, rgba(50, 197, 255, 0.06), rgba(255, 122, 24, 0.05));
+      box-shadow: var(--shadow-xl);
+      backdrop-filter: blur(16px);
     }
+
     .hero::before {
       content: "";
       position: absolute;
-      right: -80px;
-      top: -90px;
-      width: 260px;
-      height: 260px;
+      right: -70px;
+      top: -60px;
+      width: 300px;
+      height: 300px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(15, 118, 110, 0.18), rgba(15, 118, 110, 0));
+      background: radial-gradient(circle, rgba(50, 197, 255, 0.18), rgba(50, 197, 255, 0));
       pointer-events: none;
     }
-    h1, h2, h3, p { margin: 0; }
-    h1 {
-      font-size: clamp(38px, 5vw, 64px);
-      line-height: 0.96;
-      letter-spacing: -0.05em;
-      max-width: 9ch;
-      color: var(--ink);
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      left: 46%;
+      bottom: -90px;
+      width: 280px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(255, 122, 24, 0.16), rgba(255, 122, 24, 0));
+      pointer-events: none;
     }
-    h2 {
-      font-size: 19px;
-      margin-bottom: 16px;
-      letter-spacing: -0.02em;
+
+    .hero-copy,
+    .hero-side {
+      position: relative;
+      z-index: 1;
     }
+
     .eyebrow {
       display: inline-flex;
       align-items: center;
       gap: 10px;
       padding: 8px 14px;
-      margin-bottom: 18px;
       border-radius: 999px;
-      background: rgba(15, 118, 110, 0.09);
-      color: var(--accent-deep);
-      font-size: 13px;
-      font-weight: 700;
+      background: var(--brand-soft);
+      color: #8bddff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
     }
-    .lead {
-      max-width: 48ch;
-      color: var(--muted);
+
+    .headline {
       margin-top: 18px;
-      line-height: 1.75;
+      max-width: 10ch;
+      font-size: clamp(42px, 6vw, 76px);
+      line-height: 0.92;
+      letter-spacing: -0.06em;
+      text-wrap: balance;
+    }
+
+    .lead {
+      margin-top: 20px;
+      max-width: 56ch;
+      color: var(--muted);
+      line-height: 1.85;
       font-size: 15px;
     }
-    .hero-copy {
-      position: relative;
-      z-index: 1;
-    }
-    .link-row {
+
+    .hero-actions {
       display: flex;
       gap: 12px;
       flex-wrap: wrap;
-      margin-top: 22px;
+      margin-top: 26px;
     }
+
+    .btn,
+    .btn-ghost,
     .quick-link {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
-      padding: 11px 16px;
+      min-height: 48px;
+      padding: 0 18px;
       border-radius: 999px;
-      background: #fff;
-      border: 1px solid rgba(19, 34, 56, 0.08);
-      color: var(--ink);
+      font-weight: 800;
       text-decoration: none;
-      font-weight: 700;
-      box-shadow: 0 10px 24px rgba(19, 34, 56, 0.06);
+      cursor: pointer;
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
     }
+
+    .btn:hover,
+    .btn-ghost:hover,
+    .quick-link:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn {
+      border: 0;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #ff9f43 55%, #ffb56a);
+      box-shadow: 0 18px 34px rgba(255, 122, 24, 0.28);
+    }
+
+    .btn-ghost,
+    .quick-link {
+      color: var(--text);
+      border: 1px solid rgba(157, 179, 214, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .quick-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .metric {
+      padding: 16px 18px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(157, 179, 214, 0.12);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.3;
+    }
+
     .hero-side {
-      position: relative;
-      z-index: 1;
       display: grid;
       gap: 14px;
       align-content: start;
     }
-    .signal {
-      padding: 18px 20px;
+
+    .floating-card,
+    .side-card {
       border-radius: var(--radius-lg);
-      background: linear-gradient(160deg, rgba(15, 118, 110, 0.14), rgba(15, 118, 110, 0.04));
-      border: 1px solid rgba(15, 118, 110, 0.15);
+      border: 1px solid rgba(157, 179, 214, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: var(--shadow-lg);
     }
-    .signal .kicker {
-      color: var(--accent-deep);
+
+    .floating-card {
+      overflow: hidden;
+      padding: 20px;
+      background:
+        linear-gradient(180deg, rgba(9, 19, 34, 0.9), rgba(7, 16, 30, 0.82));
+    }
+
+    .floating-card .card-kicker,
+    .side-card .card-kicker {
+      color: #8bddff;
       font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
+      font-weight: 800;
     }
-    .signal strong {
+
+    .terminal {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: var(--radius-md);
+      background: rgba(5, 10, 19, 0.9);
+      border: 1px solid rgba(157, 179, 214, 0.12);
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .terminal-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.28);
+    }
+
+    .dot.red { background: #ff6b6b; }
+    .dot.yellow { background: #feca57; }
+    .dot.green { background: #1dd1a1; }
+
+    .terminal code {
+      display: block;
+      color: #e5f4ff;
+      font-size: 13px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .side-card {
+      padding: 18px 20px;
+    }
+
+    .side-card strong {
       display: block;
       margin-top: 10px;
-      font-size: 24px;
-      line-height: 1.15;
+      font-size: 22px;
+      line-height: 1.2;
       letter-spacing: -0.03em;
     }
-    .signal p,
-    .note-card p {
+
+    .side-card p {
       margin-top: 10px;
       color: var(--muted);
       line-height: 1.7;
       font-size: 14px;
     }
-    .note-card {
-      padding: 18px 20px;
-      border-radius: var(--radius-lg);
-      background: rgba(255,255,255,0.78);
-      border: 1px solid var(--line);
-    }
-    .note-card ul {
-      margin: 12px 0 0 18px;
-      padding: 0;
-      color: var(--muted);
-      line-height: 1.8;
-      font-size: 14px;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-xl);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
-      padding: 24px;
-    }
+
     .layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
       gap: 18px;
-      align-items: start;
+      margin-top: 18px;
     }
+
+    .panel {
+      border-radius: var(--radius-xl);
+      background: var(--panel-light);
+      border: 1px solid rgba(17, 32, 54, 0.08);
+      box-shadow: 0 24px 60px rgba(6, 16, 32, 0.18);
+      color: var(--ink);
+    }
+
+    .panel-body {
+      padding: 24px;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .section-heading p {
+      color: var(--ink-muted);
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .section-heading h2 {
+      font-size: 26px;
+      letter-spacing: -0.04em;
+    }
+
     .steps-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 14px;
     }
-    .hero-card {
-      display: none;
-    }
-    .steps {
-      display: grid;
-      gap: 14px;
-    }
+
     .step {
-      min-height: 172px;
-      border: 1px solid rgba(19, 34, 56, 0.08);
+      min-height: 196px;
+      padding: 20px;
       border-radius: var(--radius-lg);
-      padding: 18px;
-      background: var(--panel-strong);
-      box-shadow: 0 12px 28px rgba(19, 34, 56, 0.06);
+      border: 1px solid rgba(17, 32, 54, 0.08);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 247, 253, 0.94));
+      box-shadow: 0 12px 28px rgba(17, 32, 54, 0.07);
     }
+
     .step-no {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 34px;
-      height: 34px;
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      background: var(--accent-soft);
-      color: var(--accent-deep);
-      font-weight: 800;
+      background: linear-gradient(135deg, #ffe7d2, #dff5ff);
+      color: #0c3352;
       font-size: 14px;
-      margin-bottom: 16px;
+      font-weight: 800;
     }
+
     .step strong {
       display: block;
-      margin-bottom: 8px;
-      font-size: 18px;
-      letter-spacing: -0.02em;
+      margin-top: 18px;
+      font-size: 19px;
+      line-height: 1.35;
+      letter-spacing: -0.03em;
     }
+
     .step p {
-      color: var(--muted);
-      line-height: 1.72;
+      margin-top: 10px;
+      color: var(--ink-muted);
+      line-height: 1.78;
       font-size: 14px;
     }
+
+    .highlight-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .highlight {
+      padding: 16px;
+      border-radius: var(--radius-md);
+      background: #f4f8fe;
+      border: 1px solid rgba(17, 32, 54, 0.08);
+    }
+
+    .highlight .tag {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #54708c;
+    }
+
+    .highlight strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
     .callout {
-      border-radius: var(--radius-lg);
       padding: 18px 20px;
-      background: linear-gradient(145deg, rgba(15,118,110,0.1), rgba(15,118,110,0.04));
-      border: 1px solid rgba(15,118,110,0.15);
-      color: var(--accent-deep);
-      line-height: 1.7;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, rgba(255, 122, 24, 0.08), rgba(50, 197, 255, 0.1));
+      border: 1px solid rgba(17, 32, 54, 0.08);
+      color: #21405e;
+      line-height: 1.75;
       font-size: 14px;
     }
+
     .command-box {
       margin-top: 16px;
-      background: linear-gradient(180deg, #102032, #08131f);
-      color: #d9e3ee;
-      border-radius: var(--radius-lg);
       padding: 18px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, #09111e, #050b13);
+      color: #dff3ff;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
       font-size: 13px;
       line-height: 1.75;
       overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
+
     .toolbar {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
-      margin-top: 14px;
+      margin-top: 16px;
     }
-    .btn {
-      border: 0;
-      border-radius: 999px;
-      padding: 12px 18px;
-      color: #fff;
-      cursor: pointer;
-      font-weight: 700;
-      background: linear-gradient(90deg, var(--accent), var(--accent-deep));
-      box-shadow: 0 14px 28px rgba(15, 118, 110, 0.22);
+
+    .toolbar .btn,
+    .toolbar .btn-ghost {
+      min-height: 44px;
+      padding: 0 16px;
     }
-    .btn.secondary {
-      background: linear-gradient(90deg, #52606d, #334155);
-      box-shadow: 0 14px 28px rgba(51, 65, 85, 0.18);
-    }
+
     .fine {
       margin-top: 12px;
-      color: var(--muted);
+      color: var(--ink-muted);
+      line-height: 1.75;
       font-size: 13px;
-      line-height: 1.7;
     }
+
     .status {
-      margin-top: 10px;
-      font-size: 13px;
-      color: var(--accent);
       min-height: 20px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #0f766e;
     }
-    .mini-grid {
+
+    .note-list {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
       gap: 12px;
-      margin-top: 18px;
+      margin-top: 16px;
     }
-    .mini-card {
-      border-radius: var(--radius-md);
+
+    .note-item {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 12px;
       padding: 16px;
-      background: rgba(255,255,255,0.85);
-      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #f7faff;
+      border: 1px solid rgba(17, 32, 54, 0.08);
     }
-    .mini-card .mini-label {
-      color: var(--muted);
+
+    .note-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
       font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
+      font-weight: 800;
+      color: #0c3352;
+      background: linear-gradient(135deg, #ffe5d2, #dff4ff);
     }
-    .mini-card .mini-value {
-      margin-top: 8px;
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1.45;
+
+    .note-item strong {
+      display: block;
+      font-size: 15px;
     }
-    @media (max-width: 920px) {
-      .hero, .layout, .steps-grid, .mini-grid { grid-template-columns: 1fr; }
-      h1 { max-width: none; }
-      .step { min-height: auto; }
+
+    .note-item p {
+      margin-top: 6px;
+      color: var(--ink-muted);
+      line-height: 1.7;
+      font-size: 13px;
+    }
+
+    .fade-up {
+      opacity: 0;
+      transform: translateY(18px);
+      animation: fade-up 640ms ease forwards;
+    }
+
+    .fade-up.delay-1 { animation-delay: 80ms; }
+    .fade-up.delay-2 { animation-delay: 160ms; }
+    .fade-up.delay-3 { animation-delay: 240ms; }
+
+    @keyframes fade-up {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .layout,
+      .steps-grid,
+      .hero-grid,
+      .highlight-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .headline {
+        max-width: none;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .shell {
+        padding: 18px 14px 40px;
+      }
+
+      .topbar,
+      .section-heading {
+        display: block;
+      }
+
+      .top-pills {
+        margin-top: 12px;
+        justify-content: flex-start;
+      }
+
+      .hero,
+      .panel-body {
+        padding: 20px;
+      }
+
+      .step {
+        min-height: auto;
+      }
     }
   </style>
 </head>
 <body>
   <div class="shell">
-    <section class="hero">
-      <div class="hero-copy">
-        <div class="eyebrow">Docker Hub Helper</div>
-        <h1>从 tags 页直接拉镜像，不再手抄命令。</h1>
-        <p class="lead">
-          这个扩展做的事情很直接：在 Docker Hub 的 tags 页面找到正确架构，点一下按钮，生成可导入的 tar 包。
-          出问题时，再去弹出层看进度、错误和历史记录。
-        </p>
-        <div class="link-row">
-          <a class="quick-link" href="https://hub.docker.com/_/busybox/tags" target="_blank" rel="noreferrer">示例 tags 页面</a>
-          <a class="quick-link" href="popup/popup.html" target="_blank" rel="noreferrer">打开任务弹出层</a>
+    <div class="topbar fade-up">
+      <div class="brand">
+        <div class="brand-mark">DH</div>
+        <div class="brand-copy">
+          <strong>Docker 镜像一键下载器</strong>
+          <span>少走流程，尽快把镜像拿到手</span>
         </div>
       </div>
-      <div class="hero-side">
-        <div class="signal">
-          <div class="kicker">公益项目</div>
-          <strong>临时救急优先，配置负担尽量低。</strong>
-          <p>目标是帮助开发和运维人员在没有完整开发环境时，先把镜像取下来、导进去、把问题处理掉。</p>
+      <div class="top-pills">
+        <div class="pill">版本 <strong id="extension-version">-</strong></div>
+        <div class="pill">代理服务 <strong id="proxy-host-chip">加载中</strong></div>
+        <button class="lang-switch" id="language-toggle">EN</button>
+      </div>
+    </div>
+
+    <section class="hero fade-up delay-1">
+      <div class="hero-copy">
+        <div class="eyebrow">Welcome Aboard</div>
+        <h1 class="headline">从 Docker Hub tags 页，直接下载镜像。</h1>
+        <p class="lead">
+          插件会在 Docker Hub 的 tags 页面里直接加上下载入口。选好 tag 和架构后点一下，
+          就能把镜像打包成可导入的 tar 文件，不用手抄命令，也不用自己拼 layers。
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn" href="https://hub.docker.com/_/busybox/tags" target="_blank" rel="noreferrer">打开示例 tags 页</a>
+          <button class="btn-ghost" id="open-home">打开插件主页</button>
         </div>
-        <div class="note-card">
-          <strong>节点贡献说明</strong>
-          <p>如果后续有广告收益，可以按实际流量向代理节点提供者支付一定费用。代理服务本身资源占用很低，主要消耗带宽和少量缓存磁盘。</p>
+
+        <div class="quick-row">
+          <a class="quick-link" href="popup/popup.html" target="_blank" rel="noreferrer">查看任务弹出层</a>
+          <a class="quick-link" href="#proxy-setup">部署代理节点</a>
+        </div>
+
+        <div class="hero-grid">
+          <div class="metric">
+            <div class="label">下载入口</div>
+            <div class="value">按钮直接出现在 tags 列表右侧</div>
+          </div>
+          <div class="metric">
+            <div class="label">交付结果</div>
+            <div class="value">下载完成后得到可直接导入的 tar 包</div>
+          </div>
+          <div class="metric">
+            <div class="label">适用场景</div>
+            <div class="value">离线导入、架构挑选、临时救急</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-side">
+        <div class="floating-card">
+          <div class="card-kicker">一眼看懂流程</div>
+          <div class="terminal">
+            <div class="terminal-top">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <code>1. 打开 Docker Hub 镜像 tags 页面
+2. 找到正确 tag 和架构
+3. 点击下载按钮
+4. 等待打包完成
+5. docker load -i image.tar</code>
+          </div>
+        </div>
+
+        <div class="side-card">
+          <div class="card-kicker">公益项目</div>
+          <strong>默认先能用，再考虑更复杂的配置。</strong>
+          <p>大多数情况下，安装插件后就可以直接开始下载。只有在网络不稳定、匿名拉取受限，或者你想提供共享节点时，才需要代理服务。</p>
         </div>
       </div>
     </section>
 
     <section class="layout">
-      <section class="panel">
-        <h2>如何使用插件</h2>
-        <div class="steps-grid">
-          <div class="step">
-            <div class="step-no">01</div>
-            <strong>1. 打开镜像的 tags 页面</strong>
-            <p>例如 `busybox`、`python` 或你自己的镜像仓库。在每个架构行右侧会出现下载按钮。</p>
+      <section class="panel fade-up delay-2">
+        <div class="panel-body">
+          <div class="section-heading">
+            <div>
+              <h2>3 分钟上手</h2>
+              <p>第一次打开时先看这一页，知道按钮出现在哪、结果是什么、出问题时该去哪里看。</p>
+            </div>
           </div>
-          <div class="step">
-            <div class="step-no">02</div>
-            <strong>2. 选对 tag 和架构再下载</strong>
-            <p>同一个 tag 可能有多个架构。先确认是 `amd64`、`arm64`、`arm/v7` 还是其它变体，再点击对应按钮。</p>
+
+          <div class="steps-grid">
+            <article class="step">
+              <div class="step-no">01</div>
+              <strong>打开目标镜像的 tags 页面</strong>
+              <p>不管是官方镜像还是私有仓库，都建议从 tags 页进入，因为这里能直接看到每个 tag 对应的架构列表。</p>
+            </article>
+            <article class="step">
+              <div class="step-no">02</div>
+              <strong>确认 tag 和架构，再点下载</strong>
+              <p>同一个 tag 往往同时有 `amd64`、`arm64`、`arm/v7` 等变体。确认目标环境需要哪个架构，再点对应按钮。</p>
+            </article>
+            <article class="step">
+              <div class="step-no">03</div>
+              <strong>用弹出层查看进度和错误</strong>
+              <p>浏览器右上角的插件弹出层会显示活动任务、历史记录和失败原因。多数时候，不用开控制台也能定位问题。</p>
+            </article>
+            <article class="step">
+              <div class="step-no">04</div>
+              <strong>下载完成后直接导入运行环境</strong>
+              <p>下载结果是标准 tar 包。拿到文件后可以执行 `docker load -i image.tar`，也可以继续用 `ctr`、`nerdctl` 等工具处理。</p>
+            </article>
           </div>
-          <div class="step">
-            <div class="step-no">03</div>
-            <strong>3. 在弹出层查看任务状态</strong>
-            <p>点击浏览器工具栏里的扩展图标，可以看到活动任务、下载历史、错误信息，也可以取消进行中的任务。</p>
-          </div>
-          <div class="step">
-            <div class="step-no">04</div>
-            <strong>4. 下载完成后直接导入</strong>
-            <p>插件输出的是 tar 包，下载完成后可以用 `docker load -i image.tar` 或 `ctr` / `nerdctl` 相关命令直接导入。</p>
-          </div>
-        </div>
-        <div class="mini-grid">
-          <div class="mini-card">
-            <div class="mini-label">认证</div>
-            <div class="mini-value">只有私有镜像或受限仓库时才需要填 Docker Hub 账号或令牌。</div>
-          </div>
-          <div class="mini-card">
-            <div class="mini-label">代理</div>
-            <div class="mini-value">只有本地无法稳定拉取，或者你要给更多人提供下载能力时，才需要代理节点。</div>
-          </div>
-          <div class="mini-card">
-            <div class="mini-label">结果</div>
-            <div class="mini-value">下载结果是 tar 包，不是镜像 ID。拿到文件后直接导入运行环境即可。</div>
+
+          <div class="highlight-strip">
+            <div class="highlight">
+              <div class="tag">认证</div>
+              <strong>下载公开镜像时，通常不需要填写 Docker Hub 账号。</strong>
+            </div>
+            <div class="highlight">
+              <div class="tag">代理</div>
+              <strong>代理节点是增强能力，不是安装插件后的必选项。</strong>
+            </div>
+            <div class="highlight">
+              <div class="tag">结果</div>
+              <strong>最终拿到的是文件，不是本地镜像 ID。</strong>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>可选：部署代理节点</h2>
-        <div class="callout">
-          如果你有公网 IP 云服务器，并愿意贡献一个轻量代理节点，可以直接执行下面的安装命令。插件本身不依赖你部署节点才能使用。
+      <section class="panel fade-up delay-3" id="proxy-setup">
+        <div class="panel-body">
+          <div class="section-heading">
+            <div>
+              <h2>可选：部署代理节点</h2>
+              <p>如果你有公网 IP 云服务器，想给自己或团队提供更稳定的下载入口，可以直接复制下面的安装命令。</p>
+            </div>
+          </div>
+
+          <div class="callout">
+            插件本身可以直接使用，不要求先部署代理。只有在你需要更稳定的网络链路、更多可用节点，或者打算共享下载能力时，再考虑这一部分。
+          </div>
+
+          <div class="command-box" id="install-command"></div>
+
+          <div class="toolbar">
+            <button class="btn" id="copy-command">复制安装命令</button>
+            <button class="btn-ghost" id="copy-script-url">复制脚本地址</button>
+          </div>
+
+          <div class="status" id="copy-status"></div>
+
+          <div class="note-list">
+            <div class="note-item">
+              <div class="note-badge">01</div>
+              <div>
+                <strong>替换公网 IP</strong>
+                <p>把命令里的 `&lt;YOUR_PUBLIC_IP&gt;` 换成你的云服务器公网 IP。安装脚本会先检查环境，然后通过 pm2 托管服务进程。</p>
+              </div>
+            </div>
+            <div class="note-item">
+              <div class="note-badge">02</div>
+              <div>
+                <strong>提前放行 7001 端口</strong>
+                <p>记录服务会反向探测 `http://&lt;YOUR_PUBLIC_IP&gt;:7001/health`。如果安全组或防火墙没放行，注册会直接超时。</p>
+              </div>
+            </div>
+            <div class="note-item">
+              <div class="note-badge">03</div>
+              <div>
+                <strong>需要上游代理时再追加环境变量</strong>
+                <p>如果你的云服务器访问 Docker Hub 也需要代理，可以在执行前追加 `USE_PROXY=true PROXY_URL=http://127.0.0.1:7890`。</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="fine">节点本身资源占用不高，主要成本来自出口带宽和少量磁盘缓存。如果后续有赞助或收益，再考虑按流量给节点提供者补贴也不迟。</p>
         </div>
-        <div class="command-box" id="install-command"></div>
-        <div class="toolbar">
-          <button class="btn" id="copy-command">复制命令</button>
-          <button class="btn secondary" id="copy-script-url">复制脚本地址</button>
-        </div>
-        <div class="status" id="copy-status"></div>
-        <p class="fine">
-          命令说明：
-          `&lt;YOUR_PUBLIC_IP&gt;` 替换成你的云服务器公网 IP。脚本运行后会在安装依赖前要求确认，
-          然后用 pm2 管理代理服务进程。
-        </p>
-        <p class="fine">
-          公网部署前先放行云服务器的 `7001/tcp`。记录服务会反向校验
-          `http://&lt;YOUR_PUBLIC_IP&gt;:7001/health`，端口没开时注册会超时。
-        </p>
-        <p class="fine">
-          如果你的云服务器访问 Docker Hub 仍然需要上游代理，可以额外在执行时加上：
-          `USE_PROXY=true PROXY_URL=http://127.0.0.1:7890`
-        </p>
-        <p class="fine">
-          代理节点是可选能力，不影响插件基本使用。服务本身资源占用低，主要消耗出口带宽和少量磁盘缓存。
-        </p>
       </section>
     </section>
   </div>

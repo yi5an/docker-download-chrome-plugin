@@ -1,63 +1,70 @@
-document.addEventListener('DOMContentLoaded', function () {
-  // 获取任务容器元素
+document.addEventListener('DOMContentLoaded', async function () {
+  const locale = await getPreferredLocale();
+  const messages = getMessages(locale);
+
+  applyStaticTranslations(messages, locale);
+
   const activeTasksContainer = document.getElementById('active-tasks-container');
   const historyTasksContainer = document.getElementById('history-tasks-container');
+  const saveAuthBtn = document.getElementById('save-auth-btn');
+  const openHomeBtn = document.getElementById('open-home-btn');
+  const openWelcomeBtn = document.getElementById('open-welcome-btn');
+  const languageToggleBtn = document.getElementById('language-toggle');
 
-  // 加载Docker Hub认证信息
   loadDockerAuth();
-
-  // 初始加载任务
   loadTasks();
-
-  // 每秒更新一次任务状态
   setInterval(loadTasks, 1000);
 
-  // 保存认证信息按钮事件
-  const saveAuthBtn = document.getElementById('save-auth-btn');
+  languageToggleBtn.textContent = locale === 'zh-CN' ? 'EN' : '中文';
+  languageToggleBtn.addEventListener('click', async () => {
+    const nextLocale = locale === 'zh-CN' ? 'en' : 'zh-CN';
+    await savePreferredLocale(nextLocale);
+    window.location.reload();
+  });
+
   if (saveAuthBtn) {
     saveAuthBtn.addEventListener('click', saveDockerAuth);
   }
 
-  const openHomeBtn = document.getElementById('open-home-btn');
   if (openHomeBtn) {
     openHomeBtn.addEventListener('click', () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('home.html') });
     });
   }
 
-  const openWelcomeBtn = document.getElementById('open-welcome-btn');
   if (openWelcomeBtn) {
     openWelcomeBtn.addEventListener('click', () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
     });
   }
 
-  // 加载Docker Hub认证信息
   function loadDockerAuth() {
-    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], function(result) {
+    chrome.storage.local.get(['dockerUsername', 'dockerPassword'], function (result) {
       const usernameInput = document.getElementById('docker-username');
       const passwordInput = document.getElementById('docker-password');
       const authStatus = document.getElementById('auth-status');
 
+      usernameInput.placeholder = messages.auth.usernamePlaceholder;
+      passwordInput.placeholder = messages.auth.passwordPlaceholder;
+
       if (result.dockerUsername) {
         usernameInput.value = result.dockerUsername;
       }
+
       if (result.dockerPassword) {
         passwordInput.value = result.dockerPassword;
       }
 
-      // 显示认证状态
       if (result.dockerUsername) {
-        authStatus.textContent = `已配置: ${result.dockerUsername}`;
+        authStatus.textContent = `${messages.auth.configuredPrefix}: ${result.dockerUsername}`;
         authStatus.style.color = '#52c41a';
       } else {
-        authStatus.textContent = '未配置（下载私有镜像时需要）';
+        authStatus.textContent = messages.auth.notConfiguredHint;
         authStatus.style.color = '#f5222d';
       }
     });
   }
 
-  // 保存认证信息
   function saveDockerAuth() {
     const usernameInput = document.getElementById('docker-username');
     const passwordInput = document.getElementById('docker-password');
@@ -67,81 +74,68 @@ document.addEventListener('DOMContentLoaded', function () {
     const password = passwordInput.value.trim();
 
     if (!username || !password) {
-      authStatus.textContent = '请填写用户名和密码';
+      authStatus.textContent = messages.auth.fillCredentialsError;
       authStatus.style.color = '#f5222d';
       return;
     }
 
     chrome.storage.local.set(
       { dockerUsername: username, dockerPassword: password },
-      function() {
+      function () {
         if (chrome.runtime.lastError) {
-          authStatus.textContent = '保存失败: ' + chrome.runtime.lastError.message;
+          authStatus.textContent = `${messages.auth.saveFailedPrefix}: ${chrome.runtime.lastError.message}`;
           authStatus.style.color = '#f5222d';
         } else {
-          authStatus.textContent = `已保存: ${username}`;
+          authStatus.textContent = `${messages.auth.savedPrefix}: ${username}`;
           authStatus.style.color = '#52c41a';
-          // 清空密码框
           passwordInput.value = '';
         }
       }
     );
   }
 
-  // 加载任务函数
   function loadTasks() {
     chrome.runtime.sendMessage({ type: 'get-tasks' }, function (response) {
-      if (!response) return;
+      if (!response) {
+        return;
+      }
 
-      // 渲染活动任务
       renderTasks(activeTasksContainer, response.tasks || [], 'active');
-
-      // 渲染历史任务
       renderTasks(historyTasksContainer, response.history || [], 'history');
     });
   }
 
-  // 渲染任务列表
   function renderTasks(container, tasks, type) {
-    // 清空容器
     container.innerHTML = '';
 
-    // 如果没有任务，显示空状态
     if (tasks.length === 0) {
-      container.innerHTML = `<div class="empty-state">
-        <p>${type === 'active' ? '没有正在进行的下载任务' : '没有历史下载记录'}</p>
-      </div>`;
+      container.innerHTML = `<div class="empty-state"><p>${type === 'active' ? messages.empty.active : messages.empty.history}</p></div>`;
       return;
     }
 
-    // 遍历任务并渲染
     tasks.forEach(task => {
-      // 创建任务元素
       const taskElement = document.createElement('div');
       taskElement.className = 'task-item';
 
-      // 计算进度百分比
       const progress = task.total > 0 ? Math.round((task.finished / task.total) * 100) : 0;
-
-      // 格式化时间
       let timeInfo = '';
+
       if (task.startTime) {
         const startTime = new Date(task.startTime);
-        const formattedTime = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
-        timeInfo = `开始时间: ${formattedTime}`;
+        const languageTag = locale === 'zh-CN' ? 'zh-CN' : 'en-US';
+        const formattedTime = startTime.toLocaleTimeString(languageTag, { hour: '2-digit', minute: '2-digit' });
+        timeInfo = `${messages.timeStartedLabel}: ${formattedTime}`;
       }
 
-      // 获取任务状态文本和样式
       const statusInfo = getStatusInfo(task, type);
 
-      // 构建任务HTML
       taskElement.innerHTML = `
         <div class="task-header">
           <h3 class="task-title">${task.image}:${task.tag} <small>[${task.arch}]</small></h3>
           <span class="task-status ${statusInfo.statusClass}">${statusInfo.statusText}</span>
         </div>
         <div class="task-info">
-          ${timeInfo} | 总层数: ${task.total || 0} | 已完成: ${task.finished || 0}
+          ${timeInfo} | ${messages.totalLayersLabel}: ${task.total || 0} | ${messages.finishedLayersLabel}: ${task.finished || 0}
         </div>
         <div class="progress-bar">
           <div class="progress-inner" style="width: ${progress}%"></div>
@@ -151,47 +145,39 @@ document.addEventListener('DOMContentLoaded', function () {
         ${renderTaskActions(task, type)}
       `;
 
-      // 添加到容器
       container.appendChild(taskElement);
     });
   }
 
-  // 获取任务状态信息
   function getStatusInfo(task, type) {
-    let statusText = '';
-    let statusClass = '';
-
     if (type === 'active') {
       if (task.status === 'preparing') {
-        statusText = '准备中';
-        statusClass = 'status-downloading';
-      } else if (task.status === 'downloading') {
-        statusText = '下载中';
-        statusClass = 'status-downloading';
-      } else if (task.status === 'packing') {
-        statusText = '打包中';
-        statusClass = 'status-downloading';
-      } else if (task.status === 'completed' || task.status === 'done') {
-        statusText = '已完成';
-        statusClass = 'status-completed';
-      } else if (task.status === 'failed') {
-        statusText = '失败';
-        statusClass = 'status-failed';
+        return { statusText: messages.status.preparing, statusClass: 'status-downloading' };
+      }
+      if (task.status === 'downloading') {
+        return { statusText: messages.status.downloading, statusClass: 'status-downloading' };
+      }
+      if (task.status === 'packing') {
+        return { statusText: messages.status.packing, statusClass: 'status-downloading' };
+      }
+      if (task.status === 'completed' || task.status === 'done') {
+        return { statusText: messages.status.completed, statusClass: 'status-completed' };
+      }
+      if (task.status === 'failed') {
+        return { statusText: messages.status.failed, statusClass: 'status-failed' };
       }
     } else {
       if (task.status === 'completed' || task.status === 'done') {
-        statusText = '已完成';
-        statusClass = 'status-completed';
-      } else if (task.status === 'failed') {
-        statusText = '失败';
-        statusClass = 'status-failed';
+        return { statusText: messages.status.completed, statusClass: 'status-completed' };
+      }
+      if (task.status === 'failed') {
+        return { statusText: messages.status.failed, statusClass: 'status-failed' };
       }
     }
 
-    return { statusText, statusClass };
+    return { statusText: task.status || '-', statusClass: 'status-downloading' };
   }
 
-  // 渲染层信息
   function renderLayerInfo(task) {
     if (!task.layers || task.layers.length === 0) {
       return '';
@@ -209,87 +195,222 @@ document.addEventListener('DOMContentLoaded', function () {
     `;
   }
 
-  // 获取层状态文本
   function getLayerStatusText(status) {
     switch (status) {
-      case 'pending': return '等待中';
-      case 'downloading': return '下载中';
-      case 'done': return '已完成';
-      case 'failed': return '失败';
-      default: return status;
+      case 'pending':
+        return messages.layerStatus.pending;
+      case 'downloading':
+        return messages.layerStatus.downloading;
+      case 'done':
+        return messages.layerStatus.done;
+      case 'failed':
+        return messages.layerStatus.failed;
+      default:
+        return status;
     }
   }
 
-  // 渲染任务操作按钮
   function renderTaskActions(task, type) {
     if (type === 'active') {
       if (task.status === 'completed' || task.status === 'done') {
-        return '<div class="task-actions">下载已完成，文件已保存</div>';
+        return `<div class="task-actions">${messages.actions.fileSaved}</div>`;
       }
-      // 对于正在下载的任务，显示删除（取消）按钮
+
       return `
         <div class="task-actions">
-          <button class="delete-active-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}" style="background-color: #ff4d4f; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">取消下载</button>
+          <button class="delete-active-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}" style="background-color: #ff4d4f; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">${messages.actions.cancelDownload}</button>
         </div>
       `;
-    } else {
-      if (task.status === 'completed' || task.status === 'done') {
-        return `
-          <div class="task-actions">
-            <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">删除记录</button>
-          </div>
-        `;
-      } else {
-        return `
-          <div class="task-actions">
-            <button class="retry-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">重试</button>
-            <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">删除记录</button>
-          </div>
-        `;
-      }
     }
+
+    if (task.status === 'completed' || task.status === 'done') {
+      return `
+        <div class="task-actions">
+          <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">${messages.actions.deleteRecord}</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="task-actions">
+        <button class="retry-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">${messages.actions.retry}</button>
+        <button class="delete-btn" data-image="${task.image}" data-tag="${task.tag}" data-arch="${task.arch}">${messages.actions.deleteRecord}</button>
+      </div>
+    `;
   }
 
-  // 为历史任务的重试和删除按钮添加事件监听器
   document.addEventListener('click', function (event) {
-    // 重试按钮
     if (event.target.classList.contains('retry-btn')) {
       const { image, tag, arch } = event.target.dataset;
-      chrome.runtime.sendMessage(
-        { type: 'retry-download', image, tag, arch },
-        function (response) {
-          if (response && response.ok) {
-            // 重新加载任务列表
-            loadTasks();
-          }
+      chrome.runtime.sendMessage({ type: 'retry-download', image, tag, arch }, function (response) {
+        if (response && response.ok) {
+          loadTasks();
         }
-      );
+      });
     }
 
-    // 删除按钮 (历史)
     if (event.target.classList.contains('delete-btn')) {
       const { image, tag, arch } = event.target.dataset;
-      chrome.runtime.sendMessage(
-        { type: 'delete-history', image, tag, arch },
-        function (response) {
-          if (response && response.ok) {
-            loadTasks();
-          }
+      chrome.runtime.sendMessage({ type: 'delete-history', image, tag, arch }, function (response) {
+        if (response && response.ok) {
+          loadTasks();
         }
-      );
+      });
     }
 
-    // 取消/删除按钮 (进行中)
     if (event.target.classList.contains('delete-active-btn')) {
       const { image, tag, arch } = event.target.dataset;
-      chrome.runtime.sendMessage(
-        { type: 'delete-active-task', image, tag, arch },
-        function (response) {
-          if (response && response.ok) {
-            loadTasks();
-          }
+      chrome.runtime.sendMessage({ type: 'delete-active-task', image, tag, arch }, function (response) {
+        if (response && response.ok) {
+          loadTasks();
         }
-      );
+      });
     }
   });
 });
+
+function detectSystemLocale() {
+  const raw = (typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getUILanguage)
+    ? chrome.i18n.getUILanguage()
+    : (navigator.language || 'en');
+
+  return raw.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+}
+
+function getPreferredLocale() {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve(detectSystemLocale());
+      return;
+    }
+
+    chrome.storage.local.get(['preferredLanguage'], (result) => {
+      resolve(result.preferredLanguage || detectSystemLocale());
+    });
+  });
+}
+
+function savePreferredLocale(locale) {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve();
+      return;
+    }
+
+    chrome.storage.local.set({ preferredLanguage: locale }, () => resolve());
+  });
+}
+
+function applyStaticTranslations(messages) {
+  document.documentElement.lang = messages.lang;
+  document.title = messages.pageTitle;
+  document.querySelector('.popup-topbar h1').textContent = messages.headerTitle;
+  document.getElementById('open-home-btn').textContent = messages.openHomeButton;
+  document.getElementById('open-welcome-btn').textContent = messages.openWelcomeButton;
+  document.querySelector('#active-tasks h2').textContent = messages.activeTasksTitle;
+  document.querySelector('#history-tasks h2').textContent = messages.historyTasksTitle;
+  document.getElementById('auth-panel-title').textContent = messages.auth.sectionTitle;
+  document.getElementById('auth-panel-body').textContent = messages.auth.sectionBody;
+  document.getElementById('save-auth-btn').textContent = messages.auth.saveButton;
+}
+
+function getMessages(locale) {
+  const dict = {
+    'zh-CN': {
+      lang: 'zh-CN',
+      pageTitle: 'Docker镜像下载器',
+      headerTitle: 'Docker镜像下载器',
+      openHomeButton: '打开主页面',
+      openWelcomeButton: '查看使用指引',
+      activeTasksTitle: '活动任务',
+      historyTasksTitle: '历史记录',
+      auth: {
+        sectionTitle: 'Docker Hub 认证',
+        sectionBody: '用于下载私有镜像（如 mcp/playwright）',
+        saveButton: '保存认证信息',
+        usernamePlaceholder: 'Docker Hub 用户名或访问令牌',
+        passwordPlaceholder: '密码或访问令牌',
+        configuredPrefix: '已配置',
+        notConfiguredHint: '未配置（下载私有镜像时需要）',
+        fillCredentialsError: '请填写用户名和密码',
+        saveFailedPrefix: '保存失败',
+        savedPrefix: '已保存'
+      },
+      empty: {
+        active: '没有正在进行的下载任务',
+        history: '没有历史下载记录'
+      },
+      timeStartedLabel: '开始时间',
+      totalLayersLabel: '总层数',
+      finishedLayersLabel: '已完成',
+      status: {
+        preparing: '准备中',
+        downloading: '下载中',
+        packing: '打包中',
+        completed: '已完成',
+        failed: '失败'
+      },
+      layerStatus: {
+        pending: '等待中',
+        downloading: '下载中',
+        done: '已完成',
+        failed: '失败'
+      },
+      actions: {
+        fileSaved: '下载已完成，文件已保存',
+        cancelDownload: '取消下载',
+        retry: '重试',
+        deleteRecord: '删除记录'
+      }
+    },
+    en: {
+      lang: 'en',
+      pageTitle: 'Docker Image Downloader',
+      headerTitle: 'Docker Image Downloader',
+      openHomeButton: 'Open home page',
+      openWelcomeButton: 'Open guide',
+      activeTasksTitle: 'Active Tasks',
+      historyTasksTitle: 'History',
+      auth: {
+        sectionTitle: 'Docker Hub Authentication',
+        sectionBody: 'Used for private images such as mcp/playwright',
+        saveButton: 'Save credentials',
+        usernamePlaceholder: 'Docker Hub username or access token',
+        passwordPlaceholder: 'Password or access token',
+        configuredPrefix: 'Configured',
+        notConfiguredHint: 'Not configured (required for private images)',
+        fillCredentialsError: 'Please enter both username and password',
+        saveFailedPrefix: 'Save failed',
+        savedPrefix: 'Saved'
+      },
+      empty: {
+        active: 'There are no active download tasks',
+        history: 'There is no download history yet'
+      },
+      timeStartedLabel: 'Started',
+      totalLayersLabel: 'Layers',
+      finishedLayersLabel: 'Finished',
+      status: {
+        preparing: 'Preparing',
+        downloading: 'Downloading',
+        packing: 'Packing',
+        completed: 'Completed',
+        failed: 'Failed'
+      },
+      layerStatus: {
+        pending: 'Pending',
+        downloading: 'Downloading',
+        done: 'Done',
+        failed: 'Failed'
+      },
+      actions: {
+        fileSaved: 'Download complete, file saved',
+        cancelDownload: 'Cancel download',
+        retry: 'Retry',
+        deleteRecord: 'Delete record'
+      }
+    }
+  };
+
+  return dict[locale] || dict.en;
+}
