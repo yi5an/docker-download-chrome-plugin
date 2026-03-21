@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', async function () {
+  const SPONSOR_DISMISS_KEY = 'sponsorPlacementState';
   const locale = await getPreferredLocale();
   const messages = getMessages(locale);
 
@@ -16,6 +17,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   const refreshBtn = document.getElementById('refresh-home');
   const languageToggleBtn = document.getElementById('language-toggle');
   const reopenOnboardingBtn = document.getElementById('reopen-onboarding');
+  const sponsorCard = document.getElementById('home-sponsor-card');
+  const dismissSponsorBtn = document.getElementById('dismiss-home-sponsor');
   const registryBase = typeof getProxyRegistryServiceUrl === 'function'
     ? getProxyRegistryServiceUrl()
     : 'http://123.57.165.38:3000';
@@ -36,6 +39,15 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   reopenOnboardingBtn.addEventListener('click', function () {
     window.location.href = 'welcome.html?source=manual';
+  });
+
+  if (await isSponsorDismissed(SPONSOR_DISMISS_KEY)) {
+    sponsorCard.classList.add('is-hidden');
+  }
+
+  dismissSponsorBtn.addEventListener('click', async function () {
+    await setSponsorDismissed(SPONSOR_DISMISS_KEY);
+    sponsorCard.classList.add('is-hidden');
   });
 
   refreshBtn.addEventListener('click', async function () {
@@ -238,6 +250,35 @@ function savePreferredLocale(locale) {
   });
 }
 
+function isSponsorDismissed(key) {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve(false);
+      return;
+    }
+
+    chrome.storage.local.get([key], (result) => {
+      resolve(Boolean(result[key]?.dismissed));
+    });
+  });
+}
+
+function setSponsorDismissed(key) {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve();
+      return;
+    }
+
+    chrome.storage.local.set({
+      [key]: {
+        dismissed: true,
+        dismissedAt: Date.now()
+      }
+    }, () => resolve());
+  });
+}
+
 function setText(selector, value) {
   const element = document.querySelector(selector);
   if (element) {
@@ -320,6 +361,14 @@ function applyStaticTranslations(messages) {
     setNodeText(helpCards, index, 'h3', card.title);
     setNodeText(helpCards, index, 'p', card.body);
   });
+
+  setText('#home-sponsor-kicker', messages.sponsor.kicker);
+  setText('#home-sponsor-title', messages.sponsor.title);
+  setText('#home-sponsor-body', messages.sponsor.body);
+  setText('#home-sponsor-point-1', messages.sponsor.points[0]);
+  setText('#home-sponsor-point-2', messages.sponsor.points[1]);
+  setText('#home-sponsor-cta', messages.sponsor.cta);
+  setText('#dismiss-home-sponsor', messages.sponsor.dismissButton);
 }
 
 function getMessages(locale) {
@@ -402,6 +451,17 @@ function getMessages(locale) {
             body: '最常见的原因是 401、429、代理节点不可用，或者目标 tag、架构不存在。失败原因会直接显示在任务卡片里。'
           }
         ]
+      },
+      sponsor: {
+        kicker: '赞助推荐位',
+        title: '这里更适合放开发者相关的赞助推荐，而不是弹窗广告。',
+        body: '比如云服务器、镜像代理托管、团队协作或开发工具联盟链接，都比打断下载流程的广告更适合这个插件。',
+        points: [
+          '只在帮助区域展示，不占用任务状态和下载入口。',
+          '用户关闭后记住，后续不重复打扰。'
+        ],
+        cta: '回欢迎页看另一种展示',
+        dismissButton: '关闭推荐'
       },
       badges: {
         completed: '已完成',
@@ -497,6 +557,17 @@ function getMessages(locale) {
             body: 'The most common causes are 401, 429, unavailable proxy nodes, or missing tag and architecture variants. The failure reason is shown directly in the task card.'
           }
         ]
+      },
+      sponsor: {
+        kicker: 'Sponsor Slot',
+        title: 'This spot is better for developer-focused sponsorships than popup ads.',
+        body: 'Cloud servers, managed proxy nodes, team collaboration tools, or developer affiliate offers all fit this extension better than anything that interrupts downloads.',
+        points: [
+          'Keep it inside the help area so task status and download entry points stay untouched.',
+          'Remember when a user dismisses it so the recommendation does not keep coming back.'
+        ],
+        cta: 'See the welcome placement',
+        dismissButton: 'Dismiss'
       },
       badges: {
         completed: 'Completed',

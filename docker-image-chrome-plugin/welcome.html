@@ -662,6 +662,100 @@
       font-size: 13px;
     }
 
+    .sponsor-panel {
+      position: relative;
+      margin-top: 18px;
+      padding: 20px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(17, 32, 54, 0.08);
+      background: linear-gradient(140deg, #f8fbff, #eef6ff 58%, #fff6ef);
+      box-shadow: 0 16px 36px rgba(17, 32, 54, 0.08);
+    }
+
+    .sponsor-panel.is-hidden {
+      display: none;
+    }
+
+    .sponsor-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .sponsor-kicker {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(50, 197, 255, 0.14);
+      color: #0b637e;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .sponsor-title {
+      margin-top: 12px;
+      font-size: 20px;
+      line-height: 1.35;
+      letter-spacing: -0.03em;
+    }
+
+    .sponsor-body {
+      margin-top: 10px;
+      color: var(--ink-muted);
+      line-height: 1.72;
+      font-size: 14px;
+    }
+
+    .sponsor-points {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .sponsor-point {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 10px;
+      align-items: start;
+      color: #21405e;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .sponsor-point-badge {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #dff4ff, #ffe8d5);
+      color: #0c3352;
+    }
+
+    .sponsor-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .sponsor-dismiss {
+      border: 0;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(17, 32, 54, 0.06);
+      color: #48617d;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
     .status {
       min-height: 20px;
       margin-top: 12px;
@@ -955,6 +1049,30 @@
               <strong>最终拿到的是文件，不是本地镜像 ID。</strong>
             </div>
           </div>
+
+          <section class="sponsor-panel" id="welcome-sponsor-panel">
+            <div class="sponsor-top">
+              <div>
+                <div class="sponsor-kicker" id="welcome-sponsor-kicker">Sponsor Slot</div>
+                <h3 class="sponsor-title" id="welcome-sponsor-title">这个位置以后可以放克制型赞助推荐。</h3>
+              </div>
+              <button class="sponsor-dismiss" id="dismiss-welcome-sponsor" type="button">关闭推荐</button>
+            </div>
+            <p class="sponsor-body" id="welcome-sponsor-body">建议优先放和开发者工作流强相关的内容，比如云服务器、代理节点赞助、镜像托管工具或团队协作服务，而不是打断式广告。</p>
+            <div class="sponsor-points">
+              <div class="sponsor-point">
+                <div class="sponsor-point-badge">01</div>
+                <div id="welcome-sponsor-point-1">只放在欢迎页和主页，不插到 Docker Hub 下载界面里。</div>
+              </div>
+              <div class="sponsor-point">
+                <div class="sponsor-point-badge">02</div>
+                <div id="welcome-sponsor-point-2">让用户可以关闭，而且关闭后记住，不要反复打扰。</div>
+              </div>
+            </div>
+            <div class="sponsor-actions">
+              <a class="btn-ghost" id="welcome-sponsor-cta" href="home.html">先看主页里的展示位</a>
+            </div>
+          </section>
         </div>
       </section>
 

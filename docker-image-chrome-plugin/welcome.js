@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
+  const SPONSOR_DISMISS_KEY = 'sponsorPlacementState';
   const locale = await getPreferredLocale();
   const urlParams = new URLSearchParams(window.location.search);
   const source = urlParams.get('source') || 'default';
@@ -27,6 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const languageToggleBtn = document.getElementById('language-toggle');
   const installBanner = document.getElementById('install-banner');
   const completeOnboardingBtn = document.getElementById('complete-onboarding');
+  const sponsorPanel = document.getElementById('welcome-sponsor-panel');
+  const dismissSponsorBtn = document.getElementById('dismiss-welcome-sponsor');
 
   commandEl.textContent = installCommand;
   proxyHostChipEl.textContent = registryBase.replace(/^https?:\/\//, '');
@@ -47,6 +50,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (source === 'install' || source === 'update') {
     installBanner.classList.add('visible');
+  }
+
+  if (await isSponsorDismissed(SPONSOR_DISMISS_KEY)) {
+    sponsorPanel.classList.add('is-hidden');
   }
 
   async function copyText(text, successMessage) {
@@ -76,6 +83,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   completeOnboardingBtn.addEventListener('click', async () => {
     await markOnboardingCompleted();
     window.location.href = 'home.html';
+  });
+
+  dismissSponsorBtn.addEventListener('click', async () => {
+    await setSponsorDismissed(SPONSOR_DISMISS_KEY);
+    sponsorPanel.classList.add('is-hidden');
   });
 });
 
@@ -128,6 +140,35 @@ function markOnboardingCompleted() {
         }
       }, () => resolve());
     });
+  });
+}
+
+function isSponsorDismissed(key) {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve(false);
+      return;
+    }
+
+    chrome.storage.local.get([key], (result) => {
+      resolve(Boolean(result[key]?.dismissed));
+    });
+  });
+}
+
+function setSponsorDismissed(key) {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve();
+      return;
+    }
+
+    chrome.storage.local.set({
+      [key]: {
+        dismissed: true,
+        dismissedAt: Date.now()
+      }
+    }, () => resolve());
   });
 }
 
@@ -204,6 +245,13 @@ function applyStaticTranslations(messages) {
   });
 
   setText('.fine', messages.proxySetup.finePrint);
+  setText('#welcome-sponsor-kicker', messages.sponsor.kicker);
+  setText('#welcome-sponsor-title', messages.sponsor.title);
+  setText('#welcome-sponsor-body', messages.sponsor.body);
+  setText('#welcome-sponsor-point-1', messages.sponsor.points[0]);
+  setText('#welcome-sponsor-point-2', messages.sponsor.points[1]);
+  setText('#welcome-sponsor-cta', messages.sponsor.cta);
+  setText('#dismiss-welcome-sponsor', messages.sponsor.dismissButton);
 }
 
 function getMessages(locale, context = {}) {
@@ -305,6 +353,17 @@ function getMessages(locale, context = {}) {
         ],
         finePrint: '节点本身资源占用不高，主要成本来自出口带宽和少量磁盘缓存。如果后续有赞助或收益，再考虑按流量给节点提供者补贴也不迟。'
       },
+      sponsor: {
+        kicker: '赞助推荐位',
+        title: '这个位置以后可以放克制型赞助推荐。',
+        body: '建议优先放和开发者工作流强相关的内容，比如云服务器、代理节点赞助、镜像托管工具或团队协作服务，而不是打断式广告。',
+        points: [
+          '只放在欢迎页和主页，不插到 Docker Hub 下载界面里。',
+          '让用户可以关闭，而且关闭后记住，不要反复打扰。'
+        ],
+        cta: '先看主页里的展示位',
+        dismissButton: '关闭推荐'
+      },
       copyCommandSuccess: '安装命令已复制',
       copyScriptSuccess: '脚本地址已复制',
       copyFailedPrefix: '复制失败'
@@ -401,6 +460,17 @@ function getMessages(locale, context = {}) {
           }
         ],
         finePrint: 'The node itself is lightweight. The main cost is outbound bandwidth plus a small amount of disk cache. If the project later gets sponsorship or revenue, traffic-based compensation can be considered.'
+      },
+      sponsor: {
+        kicker: 'Sponsor Slot',
+        title: 'This area can host restrained sponsor recommendations later.',
+        body: 'The best fit is developer-adjacent offers such as cloud servers, proxy node sponsors, image hosting tools, or team collaboration services instead of disruptive ads.',
+        points: [
+          'Keep it on the welcome and home pages only, never inside the Docker Hub download workflow.',
+          'Let people dismiss it once and remember that choice so it does not keep interrupting them.'
+        ],
+        cta: 'Preview the home placement',
+        dismissButton: 'Dismiss'
       },
       copyCommandSuccess: 'Install command copied',
       copyScriptSuccess: 'Script URL copied',
