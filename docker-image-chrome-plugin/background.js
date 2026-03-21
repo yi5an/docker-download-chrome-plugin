@@ -1158,18 +1158,52 @@ async function sha256Hash(data) {
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason !== 'install') {
+  const manifestVersion = chrome.runtime.getManifest().version;
+  const previousVersion = details.previousVersion || '';
+
+  if (details.reason === 'install') {
+    chrome.storage.local.set({
+      onboardingState: {
+        completed: false,
+        startedAt: Date.now(),
+        version: manifestVersion
+      }
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('[Docker Download Plugin] Failed to persist onboarding state:', chrome.runtime.lastError.message);
+      }
+
+      chrome.tabs.create({
+        url: chrome.runtime.getURL(`welcome.html?source=install&version=${encodeURIComponent(manifestVersion)}`),
+        active: true
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Docker Download Plugin] Failed to open welcome page:', chrome.runtime.lastError.message);
+        }
+      });
+    });
     return;
   }
 
-  chrome.tabs.create({
-    url: chrome.runtime.getURL('welcome.html'),
-    active: true
-  }, () => {
-    if (chrome.runtime.lastError) {
-      console.warn('[Docker Download Plugin] Failed to open welcome page:', chrome.runtime.lastError.message);
-    }
-  });
+  if (details.reason === 'update' && previousVersion && previousVersion !== manifestVersion) {
+    chrome.storage.local.set({
+      onboardingState: {
+        completed: true,
+        lastUpdateSeenAt: Date.now(),
+        version: manifestVersion,
+        previousVersion
+      }
+    }, () => {
+      chrome.tabs.create({
+        url: chrome.runtime.getURL(`welcome.html?source=update&from=${encodeURIComponent(previousVersion)}&version=${encodeURIComponent(manifestVersion)}`),
+        active: true
+      }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn('[Docker Download Plugin] Failed to open update guide page:', chrome.runtime.lastError.message);
+        }
+      });
+    });
+  }
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

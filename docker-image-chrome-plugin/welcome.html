@@ -63,6 +63,7 @@
       border: 1px solid rgba(255, 255, 255, 0.06);
       transform: rotate(26deg);
       background: linear-gradient(135deg, rgba(50, 197, 255, 0.08), rgba(50, 197, 255, 0));
+      animation: drift-one 18s ease-in-out infinite;
     }
 
     body::after {
@@ -72,6 +73,7 @@
       height: 220px;
       border-radius: 50%;
       background: radial-gradient(circle, rgba(255, 122, 24, 0.16), rgba(255, 122, 24, 0));
+      animation: drift-two 16s ease-in-out infinite;
     }
 
     h1, h2, h3, p {
@@ -113,6 +115,7 @@
       background:
         linear-gradient(135deg, rgba(255, 122, 24, 0.95), rgba(50, 197, 255, 0.95));
       box-shadow: 0 16px 34px rgba(50, 197, 255, 0.18);
+      animation: pulse-mark 5s ease-in-out infinite;
     }
 
     .brand-copy strong {
@@ -162,6 +165,13 @@
       font-size: 13px;
       font-weight: 800;
       backdrop-filter: blur(10px);
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .lang-switch:hover {
+      transform: translateY(-1px);
+      border-color: rgba(141, 220, 255, 0.34);
+      background: rgba(255, 255, 255, 0.08);
     }
 
     .hero {
@@ -190,6 +200,7 @@
       border-radius: 50%;
       background: radial-gradient(circle, rgba(50, 197, 255, 0.18), rgba(50, 197, 255, 0));
       pointer-events: none;
+      animation: hero-orbit 14s ease-in-out infinite;
     }
 
     .hero::after {
@@ -201,6 +212,7 @@
       height: 220px;
       background: radial-gradient(circle, rgba(255, 122, 24, 0.16), rgba(255, 122, 24, 0));
       pointer-events: none;
+      animation: hero-glow 12s ease-in-out infinite;
     }
 
     .hero-copy,
@@ -274,6 +286,17 @@
       color: #fff;
       background: linear-gradient(135deg, var(--accent), #ff9f43 55%, #ffb56a);
       box-shadow: 0 18px 34px rgba(255, 122, 24, 0.28);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.24) 48%, transparent 74%);
+      transform: translateX(-130%);
+      animation: sheen 4.8s ease-in-out infinite;
     }
 
     .btn-ghost,
@@ -302,6 +325,13 @@
       border-radius: var(--radius-md);
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(157, 179, 214, 0.12);
+      transition: transform 220ms ease, border-color 220ms ease, background 220ms ease;
+    }
+
+    .metric:hover {
+      transform: translateY(-4px);
+      border-color: rgba(141, 220, 255, 0.26);
+      background: rgba(255, 255, 255, 0.08);
     }
 
     .metric .label {
@@ -325,6 +355,64 @@
       align-content: start;
     }
 
+    .install-banner {
+      display: none;
+      margin-bottom: 18px;
+      padding: 18px 20px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(50, 197, 255, 0.2);
+      background: linear-gradient(135deg, rgba(50, 197, 255, 0.14), rgba(255, 122, 24, 0.12));
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .install-banner.visible {
+      display: block;
+    }
+
+    .install-banner::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% -30% auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(141, 220, 255, 0.2), rgba(141, 220, 255, 0));
+      animation: banner-breathe 8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .install-banner .banner-kicker {
+      color: #8bddff;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .install-banner strong {
+      display: block;
+      margin-top: 10px;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    .install-banner p {
+      margin-top: 10px;
+      color: var(--muted);
+      line-height: 1.75;
+      font-size: 14px;
+    }
+
+    .banner-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
     .floating-card,
     .side-card {
       border-radius: var(--radius-lg);
@@ -338,6 +426,7 @@
       padding: 20px;
       background:
         linear-gradient(180deg, rgba(9, 19, 34, 0.9), rgba(7, 16, 30, 0.82));
+      animation: float-card 6s ease-in-out infinite;
     }
 
     .floating-card .card-kicker,
@@ -388,6 +477,8 @@
 
     .side-card {
       padding: 18px 20px;
+      animation: float-card 7.5s ease-in-out infinite;
+      animation-delay: 0.6s;
     }
 
     .side-card strong {
@@ -456,6 +547,12 @@
       border: 1px solid rgba(17, 32, 54, 0.08);
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 247, 253, 0.94));
       box-shadow: 0 12px 28px rgba(17, 32, 54, 0.07);
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+
+    .step:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 18px 34px rgba(17, 32, 54, 0.12);
     }
 
     .step-no {
@@ -498,6 +595,12 @@
       border-radius: var(--radius-md);
       background: #f4f8fe;
       border: 1px solid rgba(17, 32, 54, 0.08);
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+
+    .highlight:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 14px 28px rgba(17, 32, 54, 0.1);
     }
 
     .highlight .tag {
@@ -580,6 +683,12 @@
       border-radius: var(--radius-md);
       background: #f7faff;
       border: 1px solid rgba(17, 32, 54, 0.08);
+      transition: transform 220ms ease, box-shadow 220ms ease;
+    }
+
+    .note-item:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 28px rgba(17, 32, 54, 0.08);
     }
 
     .note-badge {
@@ -620,6 +729,55 @@
       to {
         opacity: 1;
         transform: translateY(0);
+      }
+    }
+
+    @keyframes drift-one {
+      0%, 100% { transform: rotate(26deg) translate3d(0, 0, 0); }
+      50% { transform: rotate(20deg) translate3d(18px, -12px, 0); }
+    }
+
+    @keyframes drift-two {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(-16px, -10px, 0) scale(1.06); }
+    }
+
+    @keyframes pulse-mark {
+      0%, 100% { transform: scale(1); box-shadow: 0 16px 34px rgba(50, 197, 255, 0.18); }
+      50% { transform: scale(1.04); box-shadow: 0 20px 42px rgba(50, 197, 255, 0.24); }
+    }
+
+    @keyframes hero-orbit {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(-20px, 18px, 0) scale(1.08); }
+    }
+
+    @keyframes hero-glow {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.9; }
+      50% { transform: translate3d(16px, -12px, 0) scale(1.08); opacity: 1; }
+    }
+
+    @keyframes float-card {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    @keyframes banner-breathe {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+
+    @keyframes sheen {
+      0%, 100% { transform: translateX(-130%); }
+      38%, 62% { transform: translateX(130%); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
       }
     }
 
@@ -679,6 +837,16 @@
         <button class="lang-switch" id="language-toggle">EN</button>
       </div>
     </div>
+
+    <section class="install-banner fade-up" id="install-banner">
+      <div class="banner-kicker" id="install-banner-kicker">New install</div>
+      <strong id="install-banner-title">插件已经安装完成，接下来就差真正用起来。</strong>
+      <p id="install-banner-body">建议先打开一个 Docker Hub tags 页面确认按钮位置，再回到主页查看任务、认证和代理状态。整个过程不需要额外复杂配置。</p>
+      <div class="banner-actions">
+        <a class="btn" id="install-banner-demo" href="https://hub.docker.com/_/busybox/tags" target="_blank" rel="noreferrer">立即打开示例 tags 页</a>
+        <button class="btn-ghost" id="complete-onboarding">知道了，去主页</button>
+      </div>
+    </section>
 
     <section class="hero fade-up delay-1">
       <div class="hero-copy">

@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const versionEl = document.getElementById('extension-version');
   const refreshBtn = document.getElementById('refresh-home');
   const languageToggleBtn = document.getElementById('language-toggle');
+  const reopenOnboardingBtn = document.getElementById('reopen-onboarding');
   const registryBase = typeof getProxyRegistryServiceUrl === 'function'
     ? getProxyRegistryServiceUrl()
     : 'http://123.57.165.38:3000';
@@ -31,6 +32,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     const nextLocale = locale === 'zh-CN' ? 'en' : 'zh-CN';
     await savePreferredLocale(nextLocale);
     window.location.reload();
+  });
+
+  reopenOnboardingBtn.addEventListener('click', function () {
+    window.location.href = 'welcome.html?source=manual';
   });
 
   refreshBtn.addEventListener('click', async function () {
@@ -272,8 +277,9 @@ function applyStaticTranslations(messages) {
   setText('.lead', messages.heroLead);
   setText('.hero-actions .btn', messages.demoButton);
   setText('#refresh-home', messages.refreshButton);
-  setText('.tiny-actions a:first-child', messages.welcomePageButton);
-  setText('.tiny-actions a:last-child', messages.popupButton);
+  setText('.tiny-actions a:nth-child(1)', messages.welcomePageButton);
+  setText('.tiny-actions a:nth-child(2)', messages.popupButton);
+  setText('#reopen-onboarding', messages.reopenGuideButton);
 
   setText('.hero-grid .metric:nth-child(1) .label', messages.metrics.flow.label);
   setText('.hero-grid .metric:nth-child(1) .value', messages.metrics.flow.value);
@@ -332,6 +338,7 @@ function getMessages(locale) {
       refreshingButton: '刷新中...',
       welcomePageButton: '查看欢迎页',
       popupButton: '打开任务弹出层',
+      reopenGuideButton: '重新打开使用引导',
       metrics: {
         flow: { label: '建议流程', value: '先看状态，再打开 tags 页面开始下载' },
         troubleshooting: { label: '排障重点', value: '优先看 401、429、代理节点和架构是否匹配' },
@@ -426,6 +433,7 @@ function getMessages(locale) {
       refreshingButton: 'Refreshing...',
       welcomePageButton: 'Open welcome page',
       popupButton: 'Open task popup',
+      reopenGuideButton: 'Reopen guide',
       metrics: {
         flow: { label: 'Suggested Flow', value: 'Check status first, then open the tags page and download' },
         troubleshooting: { label: 'Troubleshooting', value: 'Start with 401, 429, proxy node health, and architecture match' },

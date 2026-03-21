@@ -1,6 +1,13 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const locale = await getPreferredLocale();
-  const messages = getMessages(locale);
+  const urlParams = new URLSearchParams(window.location.search);
+  const source = urlParams.get('source') || 'default';
+  const bannerMode = source === 'install' ? 'install' : (source === 'update' ? 'update' : 'manual');
+  const messages = getMessages(locale, {
+    bannerMode,
+    version: urlParams.get('version') || '',
+    fromVersion: urlParams.get('from') || ''
+  });
 
   applyStaticTranslations(messages);
 
@@ -18,6 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const proxyHostChipEl = document.getElementById('proxy-host-chip');
   const openHomeBtn = document.getElementById('open-home');
   const languageToggleBtn = document.getElementById('language-toggle');
+  const installBanner = document.getElementById('install-banner');
+  const completeOnboardingBtn = document.getElementById('complete-onboarding');
 
   commandEl.textContent = installCommand;
   proxyHostChipEl.textContent = registryBase.replace(/^https?:\/\//, '');
@@ -35,6 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await savePreferredLocale(nextLocale);
     window.location.reload();
   });
+
+  if (source === 'install' || source === 'update') {
+    installBanner.classList.add('visible');
+  }
 
   async function copyText(text, successMessage) {
     try {
@@ -55,7 +68,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     copyText(installScriptUrl, messages.copyScriptSuccess);
   });
 
-  openHomeBtn.addEventListener('click', () => {
+  openHomeBtn.addEventListener('click', async () => {
+    await markOnboardingCompleted();
+    window.location.href = 'home.html';
+  });
+
+  completeOnboardingBtn.addEventListener('click', async () => {
+    await markOnboardingCompleted();
     window.location.href = 'home.html';
   });
 });
@@ -92,6 +111,26 @@ function savePreferredLocale(locale) {
   });
 }
 
+function markOnboardingCompleted() {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.local) {
+      resolve();
+      return;
+    }
+
+    chrome.storage.local.get(['onboardingState'], (result) => {
+      const current = result.onboardingState || {};
+      chrome.storage.local.set({
+        onboardingState: {
+          ...current,
+          completed: true,
+          completedAt: Date.now()
+        }
+      }, () => resolve());
+    });
+  });
+}
+
 function setText(selector, value) {
   const element = document.querySelector(selector);
   if (element) {
@@ -114,6 +153,11 @@ function applyStaticTranslations(messages) {
   setHtml('.top-pills .pill:last-child', `${messages.proxyServiceLabel} <strong id="proxy-host-chip">Loading</strong>`);
 
   setText('.brand-copy span', messages.brandTagline);
+  setText('#install-banner-kicker', messages.installBanner.kicker);
+  setText('#install-banner-title', messages.installBanner.title);
+  setText('#install-banner-body', messages.installBanner.body);
+  setText('#install-banner-demo', messages.installBanner.demoButton);
+  setText('#complete-onboarding', messages.installBanner.completeButton);
   setText('.eyebrow', messages.heroEyebrow);
   setText('.headline', messages.heroTitle);
   setText('.lead', messages.heroLead);
@@ -162,7 +206,11 @@ function applyStaticTranslations(messages) {
   setText('.fine', messages.proxySetup.finePrint);
 }
 
-function getMessages(locale) {
+function getMessages(locale, context = {}) {
+  const bannerMode = context.bannerMode || 'install';
+  const version = context.version || '';
+  const fromVersion = context.fromVersion || '';
+
   const dict = {
     'zh-CN': {
       lang: 'zh-CN',
@@ -170,6 +218,25 @@ function getMessages(locale) {
       versionLabel: '版本',
       proxyServiceLabel: '代理服务',
       brandTagline: '少走流程，尽快把镜像拿到手',
+      installBanner: bannerMode === 'update'
+        ? {
+          kicker: '版本更新',
+          title: `插件已更新到 ${version || '新版本'}，可以快速看一眼变化。`,
+          body: fromVersion
+            ? `你刚刚从 ${fromVersion} 升级到了 ${version || '新版本'}。这次版本已经补上了双语界面、语言切换和更完整的欢迎页体验。`
+            : '这次版本已经补上了双语界面、语言切换和更完整的欢迎页体验。',
+          demoButton: '打开示例 tags 页',
+          completeButton: '知道了，去主页'
+        }
+        : {
+          kicker: bannerMode === 'manual' ? '使用引导' : '首次安装',
+          title: bannerMode === 'manual' ? '这里是使用引导页，随时都可以回来查看。' : '插件已经安装完成，接下来就差真正用起来。',
+          body: bannerMode === 'manual'
+            ? '如果你一时忘了按钮出现在哪、下载结果是什么，或者代理节点怎么部署，可以把这一页当作快速说明书。'
+            : '建议先打开一个 Docker Hub tags 页面确认按钮位置，再回到主页查看任务、认证和代理状态。整个过程不需要额外复杂配置。',
+          demoButton: bannerMode === 'manual' ? '打开示例 tags 页' : '立即打开示例 tags 页',
+          completeButton: bannerMode === 'manual' ? '返回主页' : '知道了，去主页'
+        },
       heroEyebrow: 'Welcome Aboard',
       heroTitle: '从 Docker Hub tags 页，直接下载镜像。',
       heroLead: '插件会在 Docker Hub 的 tags 页面里直接加上下载入口。选好 tag 和架构后点一下，就能把镜像打包成可导入的 tar 文件，不用手抄命令，也不用自己拼 layers。',
@@ -248,6 +315,25 @@ function getMessages(locale) {
       versionLabel: 'Version',
       proxyServiceLabel: 'Proxy Service',
       brandTagline: 'Fewer steps, faster image downloads',
+      installBanner: bannerMode === 'update'
+        ? {
+          kicker: 'Updated',
+          title: `The extension is now on ${version || 'the latest version'}.`,
+          body: fromVersion
+            ? `You just upgraded from ${fromVersion} to ${version || 'the latest version'}. This release adds bilingual UI support, language switching, and a more complete welcome experience.`
+            : 'This release adds bilingual UI support, language switching, and a more complete welcome experience.',
+          demoButton: 'Open demo tags page',
+          completeButton: 'Got it, open home'
+        }
+        : {
+          kicker: bannerMode === 'manual' ? 'Guide' : 'First Install',
+          title: bannerMode === 'manual' ? 'This guide stays here whenever you need to come back.' : 'The extension is installed. Now let’s make it useful right away.',
+          body: bannerMode === 'manual'
+            ? 'Use this page as a quick reference whenever you want to remember where the button appears, what the output looks like, or how proxy nodes are set up.'
+            : 'Start by opening a Docker Hub tags page so you can see where the download button appears, then return to the home page to check tasks, auth, and proxy status.',
+          demoButton: 'Open a demo tags page',
+          completeButton: bannerMode === 'manual' ? 'Back to home' : 'Got it, open home'
+        },
       heroEyebrow: 'Welcome Aboard',
       heroTitle: 'Download images straight from Docker Hub tags pages.',
       heroLead: 'This extension adds download actions directly to Docker Hub tags pages. Pick the right tag and architecture, click once, and get an importable tar file without piecing layers together by hand.',
