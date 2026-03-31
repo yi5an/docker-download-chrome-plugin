@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Docker 镜像一键下载器",
-  "version": "0.1.4",
-  "description": "在 DockerHub 镜像页面直接下载指定架构的 Docker 镜像。",
+  "name": "Docker Image One-Click Downloader",
+  "version": "1.0.0",
+  "description": "Directly download a Docker image of a specific architecture from the Docker Hub image page",
   "permissions": [
     "activeTab",
     "scripting",

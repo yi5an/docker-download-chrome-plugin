@@ -1,6 +1,12 @@
 const fetch = require('node-fetch');
 const express = require('express');
+const https = require('https');
+const http = require('http');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+
+const pipelineAsync = promisify(pipeline);
 
 // 初始化 Express 应用
 const app = express();
@@ -37,7 +43,135 @@ console.log(`[Config] Proxy node id: ${PROXY_NODE_ID}`);
 console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL || '(auto-detect pending)'}`);
 
 // 根据环境变量决定是否使用代理
-const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
+const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL, { keepAlive: false }) : null;
+let proxiedFetchQueue = Promise.resolve();
+
+function shouldUseUpstreamProxy(targetUrl) {
+    if (!proxyAgent || !targetUrl) return false;
+    try {
+        const parsed = new URL(targetUrl);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return false;
+        }
+        return isPublicHostname(parsed.hostname);
+    } catch (error) {
+        return false;
+    }
+}
+
+function withUpstreamProxy(targetUrl, options = {}) {
+    if (!shouldUseUpstreamProxy(targetUrl) || options.agent) {
+        return options;
+    }
+    return {
+        ...options,
+        agent: proxyAgent
+    };
+}
+
+const UPSTREAM_RETRY_ATTEMPTS = parseInt(process.env.UPSTREAM_RETRY_ATTEMPTS || '3', 10);
+const UPSTREAM_RETRY_DELAY_MS = parseInt(process.env.UPSTREAM_RETRY_DELAY_MS || '500', 10);
+const RETRYABLE_ERRORS = ['socket hang up', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'socket closed', 'network'];
+
+async function runSerializedUpstreamRequest(targetUrl, runner, { skipSerialization = false } = {}) {
+    const shouldRetry = shouldUseUpstreamProxy(targetUrl);
+    if (!shouldRetry || skipSerialization) {
+        return await runner();
+    }
+
+    const previous = proxiedFetchQueue;
+    let release;
+    proxiedFetchQueue = new Promise(resolve => {
+        release = resolve;
+    });
+
+    await previous;
+    try {
+        return await runner();
+    } finally {
+        release();
+    }
+}
+
+/**
+ * 上游请求重试包装器
+ * 仅在使用上游代理时重试（直连模式不需要），对 socket hang up / ECONNRESET 等网络错误自动重试
+ */
+async function fetchWithRetry(url, fetchFn, { attempts = UPSTREAM_RETRY_ATTEMPTS, delay = UPSTREAM_RETRY_DELAY_MS } = {}) {
+    if (!shouldUseUpstreamProxy(url)) {
+        return await fetchFn();
+    }
+    let lastError;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            return await fetchFn();
+        } catch (err) {
+            lastError = err;
+            const msg = err.message || err.code || '';
+            const retryable = RETRYABLE_ERRORS.some(keyword => msg.toLowerCase().includes(keyword.toLowerCase()));
+            if (!retryable || i >= attempts - 1) {
+                throw err;
+            }
+            console.warn(`[Retry] 上游请求失败 (${i + 1}/${attempts}): ${msg.substring(0, 120)}，${delay}ms 后重试...`);
+            await new Promise(r => setTimeout(r, delay * (i + 1)));
+        }
+    }
+    throw lastError;
+}
+
+/**
+ * 用原生 http/https 模块做流式请求（绕过 node-fetch 的 PassThrough 瓶颈）
+ * 返回 { status, headers, bodyStream } 供调用方直接 pipeline 到下游
+ */
+function nativeStreamFetch(url, { headers = {}, agent, signal, timeout = 120000 } = {}) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        const mod = urlObj.protocol === 'https:' ? https : http;
+        const reqOptions = {
+            hostname: urlObj.hostname,
+            port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+            path: urlObj.pathname + urlObj.search,
+            method: 'GET',
+            headers,
+            agent: agent || undefined,
+            timeout,
+        };
+
+        const req = mod.request(reqOptions, (upstreamRes) => {
+            // 跟随重定向
+            if ([301, 302, 303, 307, 308].includes(upstreamRes.statusCode) && upstreamRes.headers.location) {
+                let redirectUrl = upstreamRes.headers.location;
+                if (redirectUrl.startsWith('/')) {
+                    redirectUrl = `${urlObj.protocol}//${urlObj.host}${redirectUrl}`;
+                }
+                upstreamRes.resume();
+                // 跨域重定向时去掉 Authorization，避免 S3 后端把 Docker Bearer token 当 AWS Signature 解析
+                const redirectHeaders = { ...headers };
+                try {
+                    const redirectHost = new URL(redirectUrl).hostname;
+                    if (redirectHost !== urlObj.hostname) {
+                        delete redirectHeaders['authorization'];
+                    }
+                } catch (_) {}
+                resolve(nativeStreamFetch(redirectUrl, { headers: redirectHeaders, agent, signal, timeout }));
+                return;
+            }
+            resolve({
+                status: upstreamRes.statusCode,
+                headers: upstreamRes.headers,
+                bodyStream: upstreamRes,
+                url: upstreamRes.headers.location ? url : urlObj.href,
+            });
+        });
+
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(new Error('native fetch timeout')); });
+        if (signal) {
+            signal.addEventListener('abort', () => { req.destroy(new Error('aborted')); });
+        }
+        req.end();
+    });
+}
 
 // ==================== 定时清理和健康检查 ====================
 // 每30秒清理一次超时的请求
@@ -149,7 +283,9 @@ async function detectPublicBaseUrl() {
 
     for (const provider of providers) {
         try {
-            const response = await fetch(provider, { timeout: 8000 });
+            const response = await runSerializedUpstreamRequest(provider, () =>
+                fetch(provider, withUpstreamProxy(provider, { timeout: 8000 }))
+            );
             const ip = (await response.text()).trim();
             if (isPublicHostname(ip)) {
                 return `http://${ip}:${SERVICE_PORT}`;
@@ -163,13 +299,16 @@ async function detectPublicBaseUrl() {
 }
 
 async function postToRegistry(pathname, payload) {
+    const targetUrl = `${REGISTRY_SERVICE_URL}${pathname}`;
     try {
-        const response = await fetch(`${REGISTRY_SERVICE_URL}${pathname}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            timeout: 15000
-        });
+        const response = await runSerializedUpstreamRequest(targetUrl, () =>
+            fetch(targetUrl, withUpstreamProxy(targetUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                timeout: 15000
+            }))
+        );
         if (!response.ok) {
             const text = await response.text().catch(() => response.statusText);
             throw new Error(`${response.status} ${text}`);
@@ -184,25 +323,29 @@ async function postToRegistry(pathname, payload) {
 async function runSpeedTest() {
     const startedAt = Date.now();
     try {
-        const tokenResponse = await fetch(`https://auth.docker.io/token?service=registry.docker.io&scope=repository:${SPEED_TEST_IMAGE}:pull`, {
-            method: 'GET',
-            timeout: 15000,
-            agent: proxyAgent || undefined
+        const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${SPEED_TEST_IMAGE}:pull`;
+        const manifestUrl = `https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`;
+        const { manifestBuffer, durationMs } = await runSerializedUpstreamRequest(tokenUrl, async () => {
+            const tokenResponse = await fetchWithRetry(tokenUrl, () => fetch(tokenUrl, withUpstreamProxy(tokenUrl, {
+                method: 'GET',
+                timeout: 15000
+            })));
+            const tokenPayload = await tokenResponse.json();
+            const token = tokenPayload.token || tokenPayload.access_token || '';
+            const manifestStartedAt = Date.now();
+            const manifestResponse = await fetchWithRetry(manifestUrl, () => fetch(manifestUrl, withUpstreamProxy(manifestUrl, {
+                method: 'GET',
+                timeout: 15000,
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.docker.distribution.manifest.list.v2+json'
+                }
+            })));
+            return {
+                manifestBuffer: await manifestResponse.buffer(),
+                durationMs: Math.max(Date.now() - manifestStartedAt, 1)
+            };
         });
-        const tokenPayload = await tokenResponse.json();
-        const token = tokenPayload.token || tokenPayload.access_token || '';
-        const manifestStartedAt = Date.now();
-        const manifestResponse = await fetch(`https://registry-1.docker.io/v2/${SPEED_TEST_IMAGE}/manifests/${SPEED_TEST_TAG}`, {
-            method: 'GET',
-            timeout: 15000,
-            agent: proxyAgent || undefined,
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/vnd.docker.distribution.manifest.list.v2+json'
-            }
-        });
-        const manifestBuffer = await manifestResponse.buffer();
-        const durationMs = Math.max(Date.now() - manifestStartedAt, 1);
         const manifestThroughput = (manifestBuffer.length * 8) / durationMs / 1000;
 
         const sampleBandwidths = proxyRegistryState.transferSamples.map(sample => sample.mbps).filter(value => Number.isFinite(value) && value > 0);
@@ -286,9 +429,11 @@ async function lookupLocation() {
     try {
         for (const provider of providers) {
             try {
-                const response = await fetch(provider.url, {
-                    timeout: 8000
-                });
+                const response = await runSerializedUpstreamRequest(provider.url, () =>
+                    fetch(provider.url, withUpstreamProxy(provider.url, {
+                        timeout: 8000
+                    }))
+                );
                 const payload = await response.json();
                 const location = provider.parse(payload);
                 if (location && (location.countryCode || location.country || location.region || location.city)) {
@@ -904,6 +1049,14 @@ app.get('/proxy', async (req, res) => {
     // 创建请求控制器
     const requestController = new RequestController();
     activeRequests.add(requestController.id);
+    const handleClientDisconnect = () => {
+        if (!requestController.aborted) {
+            console.warn('[proxy] 客户端连接已断开，终止上游请求:', targetUrl || '(unknown)');
+            requestController.cleanup();
+        }
+    };
+    req.once('aborted', handleClientDisconnect);
+    res.once('close', handleClientDisconnect);
 
     // 跟踪响应是否已发送，避免重复发送
     let responseSent = false;
@@ -1035,90 +1188,101 @@ app.get('/proxy', async (req, res) => {
                 ...headers
             },
             timeout: 120000, // 120秒超时
-            redirect: 'follow' // 跟随重定向
+            redirect: 'follow', // 跟随重定向
+            signal: requestController.signal
         };
-        if (proxyAgent) {
-            fetchOptions.agent = proxyAgent;
-        }
 
-        const resp = await fetch(cleanUrl, fetchOptions);
-        const contentType = resp.headers.get('content-type');
-        const contentLength = parseInt(resp.headers.get('content-length') || '0');
+        // blob 大文件流式下载：使用原生 http 模块（绕过 node-fetch 的 PassThrough 瓶颈）
+        if (isLargeFile) {
+            console.log('[Stream-Native] Using native http for large file:', cleanUrl);
 
-        console.log('[proxy] 响应状态:', resp.status, 'content-type:', contentType, 'content-length:', contentLength);
+            const nativeHeaders = {
+                'User-Agent': 'docker-download-extension/1.0',
+                ...headers
+            };
 
-        // 检查响应大小限制
-        if (contentLength > MAX_RESPONSE_SIZE) {
-            console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
-            requestController.cleanup();
-            return res.status(413).send('Payload Too Large');
-        }
+            const { agent: useAgent } = withUpstreamProxy(cleanUrl, {});
+            const nativeOpts = {
+                headers: nativeHeaders,
+                agent: useAgent || proxyAgent || undefined,
+                signal: requestController.signal,
+                timeout: REQUEST_TIMEOUT,
+            };
 
-        let responseData;
-        let isFromCache = false;
+            const nativeResp = await fetchWithRetry(cleanUrl, () => nativeStreamFetch(cleanUrl, nativeOpts));
+            const contentType = nativeResp.headers['content-type'];
+            const contentLength = parseInt(nativeResp.headers['content-length'] || '0');
+            const finalUrl = nativeResp.url || cleanUrl;
+            if (finalUrl !== cleanUrl) {
+                console.log('[proxy] 上游重定向:', cleanUrl, '->', finalUrl);
+            }
 
-        // 缓存策略检查
-        const shouldCache = resp.status === 200 && !isLargeFile && contentLength < CACHE_BLOB_MAX_SIZE;
+            console.log('[proxy] 响应状态:', nativeResp.status, 'content-type:', contentType, 'content-length:', contentLength, 'final-url:', finalUrl);
 
-        if (shouldCache) {
-            // 对于小文件，先读取整个响应到内存进行缓存
-            responseData = await resp.buffer();
+            if (contentLength > MAX_RESPONSE_SIZE) {
+                console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
+                nativeResp.bodyStream.resume();
+                requestController.cleanup();
+                return res.status(413).send('Payload Too Large');
+            }
 
-            responseCache.set(cacheKey, {
-                data: responseData,
-                contentType: contentType,
-                status: resp.status
-            }, responseData.length);
+            if (nativeResp.status !== 200) {
+                // 非 200 响应，读取后返回
+                const chunks = [];
+                nativeResp.bodyStream.on('data', c => chunks.push(c));
+                await new Promise((resolve, reject) => {
+                    nativeResp.bodyStream.on('end', resolve);
+                    nativeResp.bodyStream.on('error', reject);
+                });
+                const responseData = Buffer.concat(chunks);
+                requestController.cleanup();
+                if (!responseSent) {
+                    responseSent = true;
+                    res.status(nativeResp.status);
+                    res.set('X-Cache', 'MISS');
+                    if (contentType) res.set('content-type', contentType);
+                    res.send(responseData);
+                }
+                return;
+            }
 
-            console.log('[Cache] Cached:', cleanUrl, 'auth:', authHash, 'size:', responseData.length);
-            isFromCache = true;
-        } else if (resp.status !== 200) {
-            console.log('[Cache] NOT cached (non-200 response):', resp.status);
-            // 对于非200响应，仍需要读取数据以释放内存
-            responseData = await resp.buffer();
-        } else if (isLargeFile) {
-            console.log('[Stream] Using streaming for large file:', contentLength, 'bytes');
-
-            // 流式处理大文件
-            res.status(resp.status);
+            // 流式传输大文件
+            res.status(nativeResp.status);
             res.set('X-Cache', 'MISS');
             if (contentType) res.set('content-type', contentType);
+            if (contentLength > 0) {
+                res.set('content-length', String(contentLength));
+            }
 
-            // 设置Transfer-Encoding: chunked
-            res.setHeader('Transfer-Encoding', 'chunked');
-
-            // 使用流式传输
             let bytesWritten = 0;
+            let nextProgressLogAt = 10 * 1024 * 1024;
+            let streamTimeout = null;
+            let streamProgressTimer = null;
             try {
-                await new Promise((resolve, reject) => {
-                    resp.body.on('data', chunk => {
-                        if (requestController.aborted) {
-                            resp.body.destroy();
-                            return reject(new Error('Request aborted'));
-                        }
+                streamTimeout = setTimeout(() => {
+                    if (!requestController.aborted) {
+                        console.error('[Stream-Native] 流式传输超时，终止上游请求:', finalUrl);
+                        requestController.cleanup();
+                        nativeResp.bodyStream.destroy(new Error('Request timeout'));
+                    }
+                }, REQUEST_TIMEOUT);
 
-                        res.write(chunk);
-                        bytesWritten += chunk.length;
+                streamProgressTimer = setInterval(() => {
+                    const elapsedMs = Date.now() - startTime;
+                    const speedMbps = elapsedMs > 0 ? Number((((bytesWritten * 8) / elapsedMs) / 1000).toFixed(2)) : 0;
+                    console.log(`[Stream-Native] Ongoing: ${bytesWritten} / ${contentLength} bytes, ${speedMbps} Mbps, elapsed ${elapsedMs}ms`);
+                }, 5000);
 
-                        // 记录进度
-                        if (bytesWritten % (10 * 1024 * 1024) === 0) { // 每10MB记录一次
-                            console.log(`[Stream] Progress: ${bytesWritten} / ${contentLength}`);
-                        }
-                    });
-
-                    resp.body.on('end', resolve);
-                    resp.body.on('error', reject);
-
-                    // 超时处理
-                    setTimeout(() => {
-                        if (!requestController.aborted) {
-                            reject(new Error('Request timeout'));
-                        }
-                    }, REQUEST_TIMEOUT);
+                nativeResp.bodyStream.on('data', chunk => {
+                    bytesWritten += chunk.length;
+                    while (bytesWritten >= nextProgressLogAt) {
+                        console.log(`[Stream-Native] Progress: ${bytesWritten} / ${contentLength}`);
+                        nextProgressLogAt += 10 * 1024 * 1024;
+                    }
                 });
 
-                // 正常完成
-                res.end();
+                await pipelineAsync(nativeResp.bodyStream, res);
+
                 responseSent = true;
                 recordTraffic(cleanUrl, bytesWritten, false);
                 if (downloadMetadata.downloadId) {
@@ -1130,62 +1294,112 @@ app.get('/proxy', async (req, res) => {
                     });
                 }
                 appendRecentProxyRequest({
-                    url: cleanUrl,
+                    url: finalUrl,
                     type: 'blob',
-                    status: resp.status,
+                    status: nativeResp.status,
                     fromCache: false,
                     bytes: bytesWritten,
                     durationMs: Date.now() - startTime
                 });
                 recordTransferSample(bytesWritten, Date.now() - startTime);
                 const duration = Date.now() - startTime;
-                console.log('[proxy] 流式传输完成，耗时:', duration, 'ms');
+                console.log('[proxy] 原生流式传输完成，耗时:', duration, 'ms');
                 requestController.cleanup();
                 return;
             } catch (err) {
-                console.error('[Stream] 流式传输失败:', err.message);
-                // 流式传输失败时，不要尝试发送错误响应（可能已经发送了部分数据）
-                // 只是清理资源
+                console.error('[Stream-Native] 流式传输失败:', err.message);
                 requestController.cleanup();
-                throw err;  // 让外层catch处理
+                throw err;
+            } finally {
+                if (streamTimeout) {
+                    clearTimeout(streamTimeout);
+                }
+                if (streamProgressTimer) {
+                    clearInterval(streamProgressTimer);
+                }
             }
-        } else {
-            // 对于小但不需要缓存的文件
-            responseData = await resp.buffer();
-            console.log('[Stream] Small file but not cached:', responseData.length);
         }
 
-        // 记录流量（来自网络）
-        recordTraffic(cleanUrl, responseData.length, false);
-        if (downloadMetadata.downloadId) {
-            reportProxyDownloadEvent({
-                ...downloadMetadata,
-                status: resp.status === 200 ? 'completed' : 'upstream-error',
+        // 非 blob 大文件：走原有的 node-fetch 逻辑（需要缓存支持）
+        await runSerializedUpstreamRequest(cleanUrl, async () => {
+
+            const resp = await fetchWithRetry(cleanUrl, () => fetch(cleanUrl, withUpstreamProxy(cleanUrl, fetchOptions)));
+            const contentType = resp.headers.get('content-type');
+            const contentLength = parseInt(resp.headers.get('content-length') || '0');
+            const finalUrl = resp.url || cleanUrl;
+            if (finalUrl !== cleanUrl) {
+                console.log('[proxy] 上游重定向:', cleanUrl, '->', finalUrl);
+            }
+
+            console.log('[proxy] 响应状态:', resp.status, 'content-type:', contentType, 'content-length:', contentLength, 'final-url:', finalUrl);
+
+            // 检查响应大小限制
+            if (contentLength > MAX_RESPONSE_SIZE) {
+                console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
+                requestController.cleanup();
+                return res.status(413).send('Payload Too Large');
+            }
+
+            let responseData;
+            let isFromCache = false;
+
+            // 缓存策略检查
+            const shouldCache = resp.status === 200 && !isLargeFile && contentLength < CACHE_BLOB_MAX_SIZE;
+
+            if (shouldCache) {
+                // 对于小文件，先读取整个响应到内存进行缓存
+                responseData = await resp.buffer();
+
+                responseCache.set(cacheKey, {
+                    data: responseData,
+                    contentType: contentType,
+                    status: resp.status
+                }, responseData.length);
+
+                console.log('[Cache] Cached:', cleanUrl, 'auth:', authHash, 'size:', responseData.length);
+                isFromCache = true;
+            } else if (resp.status !== 200) {
+                console.log('[Cache] NOT cached (non-200 response):', resp.status);
+                // 对于非200响应，仍需要读取数据以释放内存
+                responseData = await resp.buffer();
+            } else {
+                // 对于小但不需要缓存的文件
+                responseData = await resp.buffer();
+                console.log('[Stream] Small file but not cached:', responseData.length);
+            }
+
+            // 记录流量（来自网络）
+            recordTraffic(cleanUrl, responseData.length, false);
+            if (downloadMetadata.downloadId) {
+                reportProxyDownloadEvent({
+                    ...downloadMetadata,
+                    status: resp.status === 200 ? 'completed' : 'upstream-error',
+                    fromCache: false,
+                    bytes: responseData.length
+                });
+            }
+            appendRecentProxyRequest({
+                url: finalUrl,
+                type: isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'),
+                status: resp.status,
                 fromCache: false,
-                bytes: responseData.length
+                bytes: responseData.length,
+                durationMs: Date.now() - startTime
             });
-        }
-        appendRecentProxyRequest({
-            url: cleanUrl,
-            type: isBlobRequest ? 'blob' : (isManifestRequest ? 'manifest' : 'other'),
-            status: resp.status,
-            fromCache: false,
-            bytes: responseData.length,
-            durationMs: Date.now() - startTime
-        });
-        recordTransferSample(responseData.length, Date.now() - startTime);
+            recordTransferSample(responseData.length, Date.now() - startTime);
 
-        // 发送响应
-        if (!responseSent) {
-            res.status(resp.status);
-            res.set('X-Cache', 'MISS');
-            if (contentType) res.set('content-type', contentType);
-            res.send(responseData);
-            responseSent = true;
-        }
+            // 发送响应
+            if (!responseSent) {
+                res.status(resp.status);
+                res.set('X-Cache', 'MISS');
+                if (contentType) res.set('content-type', contentType);
+                res.send(responseData);
+                responseSent = true;
+            }
 
-        const duration = Date.now() - startTime;
-        console.log('[proxy] 请求完成，耗时:', duration, 'ms');
+            const duration = Date.now() - startTime;
+            console.log('[proxy] 请求完成，耗时:', duration, 'ms');
+        }, { skipSerialization: isLargeFile });
 
     } catch (err) {
         console.error('[proxy] 错误:', err && err.stack ? err.stack : err);
@@ -1447,7 +1661,11 @@ app.listen(SERVICE_PORT, HOST, () => {
         .catch(err => {
             console.error('[Registry] Initial registration/heartbeat failed:', err.message);
             console.error(`[Registry] Check whether ${PROXY_PUBLIC_BASE_URL}/health is publicly reachable and the cloud firewall/security group allows TCP ${SERVICE_PORT}`);
-            process.exit(1);
+            if (process.env.ALLOW_UNREGISTERED !== 'true') {
+                process.exit(1);
+            } else {
+                console.warn('[Registry] Running in unregistered mode (ALLOW_UNREGISTERED=true)');
+            }
         });
 
     setInterval(() => {

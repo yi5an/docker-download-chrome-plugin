@@ -124,7 +124,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // ==================== 超时控制配置 ====================
-const FETCH_TIMEOUT = 300000; // 单次请求超时：300 秒（与代理服务器保持一致）
+const FETCH_TIMEOUT = 1800000; // 单次请求超时：1800 秒，与代理服务器保持一致
 
 /**
  * 检测是否需要使用代理（仅限中国出口IP）
@@ -293,10 +293,12 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
 }
 
 // 代理fetch通过中转服务器。
-// 默认优先使用用户当前网络直接访问 Docker Hub，仅在直连失败时回退到代理。
+// 当已选定代理节点时，严格只走代理；否则才按地域和回退策略选择直连或代理。
 async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false, strategyMode = 'auto', proxyRoute = null, requestMeta = null) {
   const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod\//.test(url);
   const isCloudflareRegistry = /production\.cloudflare\.docker\.com/.test(url);
+  const hasExplicitProxyRoute = !!(proxyRoute && (proxyRoute.baseUrl || proxyRoute.base));
+  const forceProxy = hasExplicitProxyRoute;
 
   // 检测地域（会话级别缓存）
   const isChina = await checkGeoLocation();
@@ -321,7 +323,9 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   // Docker Hub 相关请求也优先直连，只有直连失败才回退代理。
   const preferDirect = isDockerRegistry || isCloudflareRegistry || !useProxy;
   let strategies = preferDirect ? ['direct', 'proxy'] : ['proxy', 'direct'];
-  if (strategyMode === 'direct-only') {
+  if (forceProxy) {
+    strategies = ['proxy'];
+  } else if (strategyMode === 'direct-only') {
     strategies = ['direct'];
   } else if (strategyMode === 'proxy-only') {
     strategies = ['proxy'];
@@ -343,7 +347,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     if (requestMeta.arch) options.headers['X-Arch'] = requestMeta.arch;
   }
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, StrategyMode: ${strategyMode}, DockerHubRequest: ${isDockerRegistry || isCloudflareRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, StrategyMode: ${strategyMode}, ForcedProxy: ${forceProxy}, DockerHubRequest: ${isDockerRegistry || isCloudflareRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   // 根据地域获取动态代理配置
   // 注意：502错误检测和代理切换已在前面处理（第247-257行）
@@ -446,7 +450,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
-          if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry)) {
+          if (!forceProxy && (strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry)) {
             if (resp.status === 429) {
               await recordProxyUsage('proxy', actualProxyUrl, 'rate-limited');
               return await tryDirectFallbackOnRateLimit();
@@ -489,7 +493,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
       console.warn(`[ProxyFetch] ${strategy.toUpperCase()} failed: ${err.message}`);
       if (strategy === 'direct') {
         await recordDirectFailure(err.message);
-      } else if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && !err.isAuthError) {
+      } else if (!forceProxy && (strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && !err.isAuthError) {
         try {
           await recordProxyUsage('proxy', dynamicProxyBase + encodeURIComponent(proxyUrl), 'network-failed');
           return await tryDirectFallbackAfterProxyFailure('network-failed');
@@ -838,7 +842,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64', proxyRoute = nu
  */
 async function downloadSingleLayer(image, layer, token, progressCallback, proxyRoute = null, requestMeta = null) {
   const url = `https://registry-1.docker.io/v2/${image}/blobs/${layer.digest}`;
-  const timeout = 300000; // 大文件下载使用 5 分钟超时
+  const timeout = FETCH_TIMEOUT; // 大文件下载与代理服务使用相同超时
   const shortDigest = layer.digest.substring(7, 19);
 
   // 检查是否配置了Docker Hub认证
@@ -920,7 +924,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback, proxyR
       if (err.message && (
         err.message.includes('502') ||
         err.message.includes('Bad Gateway') ||
-        err.message.includes('请求超时 (300秒)') // 特定于我们的超时提示
+        err.message.includes(`请求超时 (${FETCH_TIMEOUT / 1000}秒)`) // 特定于我们的超时提示
       )) {
         console.log(`[Download] 502 Bad Gateway - Proxy restart detected, waiting ${retryDelay / 1000}s before retry...`);
 

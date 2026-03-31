@@ -21,6 +21,22 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
+// 请求日志中间件（静默路由不打印）
+const SILENT_ROUTES = ['/health', '/api/node-status'];
+app.use((req, res, next) => {
+  if (SILENT_ROUTES.includes(req.path)) return next();
+  const start = Date.now();
+  const clientIp = getRequestIp(req);
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const status = res.statusCode;
+    const level = status >= 400 ? 'WARN' : 'INFO';
+    const label = status >= 400 ? ' ✗' : ' ✓';
+    console.log(`[${level}]${label} ${req.method} ${req.path} ${status} ${ms}ms | ip=${clientIp || '-'}`);
+  });
+  next();
+});
+
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -569,12 +585,15 @@ app.post('/api/proxies/register', (req, res) => {
 
   Promise.all([validateProxyBaseUrl(baseUrl), lookupProxyLocation(baseUrl)]).then(([validation, lookedUpLocation]) => {
     if (!validation.ok) {
+      console.warn(`[Register] 代理注册失败: proxyId=${proxyId} baseUrl=${baseUrl} reason=${validation.error}`);
       return res.status(400).json({
         error: validation.error
       });
     }
 
     const store = readStore();
+    const isNew = !store.proxies[proxyId];
+    console.log(`[Register] 代理${isNew ? '注册' : '更新'}: proxyId=${proxyId} baseUrl=${baseUrl} name=${req.body.name || '-'} provider=${req.body.provider || '-'} location=${JSON.stringify(lookedUpLocation)} validation=${JSON.stringify(validation)}`);
     const proxy = normalizeProxy(proxyId, {
       ...req.body,
       location: hasLocation(req.body.location) ? req.body.location : lookedUpLocation
@@ -614,6 +633,11 @@ app.post('/api/proxies/heartbeat', (req, res) => {
   proxy.lastHeartbeatAt = req.body.lastHeartbeatAt || nowIso();
   store.proxies[proxyId] = proxy;
 
+  const isNew = !existing.proxyId;
+  if (isNew) {
+    console.log(`[Heartbeat] 新代理上线: proxyId=${proxyId} baseUrl=${proxy.baseUrl} name=${proxy.name}`);
+  }
+
   if (req.body.trafficSnapshot) {
     store.trafficSnapshots.unshift({
       id: crypto.randomUUID(),
@@ -642,18 +666,29 @@ app.post('/api/proxies/download-events', (req, res) => {
   const store = readStore();
   appendProxyDownloadEvent(store, proxyId, req.body);
   writeStore(store);
+
+  const evt = req.body;
+  if (evt.status === 'completed') {
+    console.log(`[Event] 下载完成: ${evt.image}:${evt.tag} bytes=${(evt.bytes / 1024 / 1024).toFixed(1)}MB fromCache=${evt.fromCache} proxyId=${proxyId}`);
+  } else if (evt.status === 'failed') {
+    console.warn(`[Event] 下载失败: ${evt.image}:${evt.tag} proxyId=${proxyId}`);
+  }
+
   res.json({ success: true });
 });
 
 app.get('/api/proxies/select', (req, res) => {
+  const clientIp = getRequestIp(req);
+  const countryCode = req.query.countryCode || req.query.region || '';
   const store = readStore();
-  const proxy = pickBestProxy(store, {
-    countryCode: req.query.countryCode || req.query.region
-  });
+  const proxy = pickBestProxy(store, { countryCode });
 
   if (!proxy) {
+    console.warn(`[Select] 无可用代理 | ip=${clientIp} region=${countryCode || '-'} onlineCount=${Object.keys(store.proxies).length}`);
     return res.status(404).json({ error: 'No healthy proxy available' });
   }
+
+  console.log(`[Select] 分配代理: proxyId=${proxy.proxyId} baseUrl=${proxy.baseUrl} location=${JSON.stringify(proxy.location)} score=${getProxyScore(proxy, countryCode)} | ip=${clientIp} region=${countryCode || '-'}`);
 
   res.json({
     success: true,
@@ -663,7 +698,10 @@ app.get('/api/proxies/select', (req, res) => {
 });
 
 app.get('/api/proxies', (req, res) => {
+  const clientIp = getRequestIp(req);
   const store = readStore();
+  const healthyCount = Object.values(store.proxies).filter(isProxyHealthy).length;
+  console.log(`[Proxies] 查询代理列表: ${healthyCount}/${Object.keys(store.proxies).length} healthy | ip=${clientIp}`);
   const proxies = Object.values(store.proxies).map(proxy => ({
     ...sanitizeProxyResponse(proxy),
     healthy: isProxyHealthy(proxy)
@@ -693,6 +731,8 @@ app.post('/api/downloads/start', async (req, res) => {
   writeStore(store);
   updateLegacyDownloads(download);
 
+  console.log(`[Download] 开始: ${image}:${tag} arch=${arch} downloadId=${downloadId} proxyId=${req.body.proxyId || '-'} plugin=${req.body.pluginVersion || '-'} | ip=${clientIp} geo=${JSON.stringify(clientGeo)}`);
+
   res.json({ success: true, download });
 });
 
@@ -717,6 +757,8 @@ app.post('/api/downloads/complete', (req, res) => {
   appendDownloadEvent(download, 'completed', { proxyId: req.body.proxyId });
   store.downloads[downloadId] = download;
   writeStore(store);
+
+  console.log(`[Download] 完成: ${download.image}:${download.tag} size=${(download.size / 1024 / 1024).toFixed(1)}MB duration=${download.durationMs}ms speed=${(download.averageSpeedBytes / 1024).toFixed(0)}KB/s downloadId=${downloadId} proxyId=${req.body.proxyId || '-'}`);
 
   res.json({ success: true, download });
 });
@@ -745,6 +787,8 @@ app.post('/api/downloads/fail', (req, res) => {
   });
   store.downloads[downloadId] = download;
   writeStore(store);
+
+  console.warn(`[Download] 失败: ${download.image}:${download.tag} error=${req.body.error || 'unknown'} downloadId=${downloadId} proxyId=${req.body.proxyId || '-'}`);
 
   res.json({ success: true, download });
 });
@@ -824,4 +868,6 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Proxy registry service running at http://localhost:${PORT}`);
+  console.log(`[Config] HEARTBEAT_STALE=${HEARTBEAT_STALE_MS}ms PROXY_VALIDATION_TIMEOUT=${PROXY_VALIDATION_TIMEOUT_MS}ms ALLOW_PRIVATE=${ALLOW_PRIVATE_PROXY_BASE_URL}`);
+  console.log(`[Config] DATA_DIR=${DATA_DIR}`);
 });
