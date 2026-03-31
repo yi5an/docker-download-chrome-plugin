@@ -411,6 +411,27 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     throw new Error(`${resp.status} ${errText}`);
   }
 
+  async function tryDirectFallbackAfterProxyFailure(reason) {
+    console.warn(`[ProxyFetch] Proxy failed for ${url}, trying DIRECT fallback (${reason})`);
+    const resp = await fetchWithTimeout(url, options, timeout);
+
+    if (resp.ok) {
+      console.log('[ProxyFetch] DIRECT fallback success after proxy failure');
+      await recordProxyUsage('direct', url, `fallback-after-${reason}`);
+      return await parseResponse(resp, responseType);
+    }
+
+    const errText = await resp.text().catch(() => resp.statusText);
+    if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
+      const error = new Error(`401 UNAUTHORIZED: ${errText}`);
+      error.status = 401;
+      error.isAuthError = true;
+      throw error;
+    }
+
+    throw new Error(`${resp.status} ${errText}`);
+  }
+
   for (const strategy of strategies) {
     try {
       if (strategy === 'proxy') {
@@ -425,9 +446,15 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
           return await parseResponse(resp, responseType);
         } else {
           const errText = await resp.text().catch(() => resp.statusText);
-          if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && resp.status === 429) {
-            await recordProxyUsage('proxy', actualProxyUrl, 'rate-limited');
-            return await tryDirectFallbackOnRateLimit();
+          if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry)) {
+            if (resp.status === 429) {
+              await recordProxyUsage('proxy', actualProxyUrl, 'rate-limited');
+              return await tryDirectFallbackOnRateLimit();
+            }
+            if (resp.status >= 500 || resp.status === 408 || resp.status === 404) {
+              await recordProxyUsage('proxy', actualProxyUrl, `http-${resp.status}`);
+              return await tryDirectFallbackAfterProxyFailure(`http-${resp.status}`);
+            }
           }
           // 检查是否是认证错误
           if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
@@ -462,6 +489,18 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
       console.warn(`[ProxyFetch] ${strategy.toUpperCase()} failed: ${err.message}`);
       if (strategy === 'direct') {
         await recordDirectFailure(err.message);
+      } else if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && !err.isAuthError) {
+        try {
+          await recordProxyUsage('proxy', dynamicProxyBase + encodeURIComponent(proxyUrl), 'network-failed');
+          return await tryDirectFallbackAfterProxyFailure('network-failed');
+        } catch (directFallbackErr) {
+          console.warn(`[ProxyFetch] DIRECT fallback after proxy failure also failed: ${directFallbackErr.message}`);
+          if (directFallbackErr.isAuthError) {
+            console.error('[ProxyFetch] Authentication error during direct fallback, not retrying with other strategy');
+            throw directFallbackErr;
+          }
+          errors.push(`DIRECT-FALLBACK: ${directFallbackErr.message}`);
+        }
       }
       // 如果是认证错误，立即抛出，不尝试其他策略
       if (err.isAuthError) {
