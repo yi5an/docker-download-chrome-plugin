@@ -15,6 +15,7 @@ const LEGACY_DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
 const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 10);
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || path.join(DATA_DIR, 'GeoLite2-City.mmdb');
+const ALLOW_PRIVATE_PROXY_BASE_URL = process.env.ALLOW_PRIVATE_PROXY_BASE_URL === 'true';
 
 app.set('trust proxy', true);
 app.use(cors());
@@ -192,10 +193,13 @@ function computeDownloadMetrics(record) {
 
 function normalizeProxy(proxyId, payload, existing = {}) {
   const now = nowIso();
+  const baseUrl = typeof payload.baseUrl === 'string' && payload.baseUrl.trim()
+    ? payload.baseUrl.trim()
+    : (typeof existing.baseUrl === 'string' ? existing.baseUrl.trim() : '');
   return {
     proxyId,
     name: payload.name || existing.name || proxyId,
-    baseUrl: payload.baseUrl || existing.baseUrl || '',
+    baseUrl,
     proxyPath: payload.proxyPath || existing.proxyPath || '/proxy?url=',
     trackPath: payload.trackPath || existing.trackPath || '/track',
     provider: payload.provider || existing.provider || '',
@@ -236,6 +240,25 @@ function normalizeProxy(proxyId, payload, existing = {}) {
     lastHeartbeatAt: payload.lastHeartbeatAt || now,
     updatedAt: now
   };
+}
+
+function hasRoutableBaseUrl(proxy) {
+  if (!proxy?.baseUrl) return false;
+
+  try {
+    const url = new URL(proxy.baseUrl);
+    const hostname = url.hostname.toLowerCase();
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    if (ALLOW_PRIVATE_PROXY_BASE_URL) return true;
+    if (['127.0.0.1', 'localhost', '0.0.0.0'].includes(hostname)) return false;
+    if (hostname === '::1' || hostname === '[::1]') return false;
+    if (hostname.startsWith('10.')) return false;
+    if (hostname.startsWith('192.168.')) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 async function lookupProxyLocation(baseUrl) {
@@ -299,7 +322,7 @@ function getProxyScore(proxy, requestedCountry = '') {
 }
 
 function pickBestProxy(store, options = {}) {
-  const proxies = Object.values(store.proxies).filter(isProxyHealthy);
+  const proxies = Object.values(store.proxies).filter(proxy => isProxyHealthy(proxy) && hasRoutableBaseUrl(proxy));
   if (!proxies.length) {
     return null;
   }
@@ -313,9 +336,26 @@ function pickBestProxy(store, options = {}) {
     .sort((a, b) => b.score - a.score);
 
   const topScore = scored[0]?.score ?? -Infinity;
-  const topCandidates = scored.filter(entry => Math.abs(entry.score - topScore) <= 5);
-  const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)] || scored[0];
-  return selected ? selected.proxy : null;
+  const minEligibleScore = topScore - 80;
+  const eligible = scored.filter(entry => entry.score >= minEligibleScore);
+  const floorScore = eligible[eligible.length - 1]?.score ?? 0;
+  const weighted = eligible.map(entry => {
+    const adjusted = Math.max(entry.score - floorScore, 0);
+    // Compress the score gap so the fastest node is preferred without starving other healthy nodes.
+    const weight = Math.max(1, Math.sqrt(adjusted + 1));
+    return { ...entry, weight };
+  });
+  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const entry of weighted) {
+    random -= entry.weight;
+    if (random <= 0) {
+      return entry.proxy;
+    }
+  }
+
+  return weighted[0]?.proxy || scored[0]?.proxy || null;
 }
 
 function appendProxyDownloadEvent(store, proxyId, payload) {
@@ -443,13 +483,22 @@ function sanitizeProxyResponse(proxy) {
     connectivity: proxy.connectivity,
     traffic: proxy.traffic,
     capabilities: proxy.capabilities,
-    lastHeartbeatAt: proxy.lastHeartbeatAt
+    lastHeartbeatAt: proxy.lastHeartbeatAt,
+    routable: hasRoutableBaseUrl(proxy)
   };
 }
 
 async function validateProxyBaseUrl(baseUrl) {
   try {
     const parsed = new URL(baseUrl);
+    if (ALLOW_PRIVATE_PROXY_BASE_URL) {
+      return {
+        ok: true,
+        checkedUrl: `${baseUrl}/health`,
+        attempts: 0,
+        note: 'private baseUrl validation allowed by env'
+      };
+    }
     if (['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
       return {
         ok: true,
@@ -513,6 +562,9 @@ app.post('/api/proxies/register', (req, res) => {
   const { proxyId, baseUrl } = req.body || {};
   if (!proxyId || !baseUrl) {
     return res.status(400).json({ error: 'Missing proxyId or baseUrl' });
+  }
+  if (!hasRoutableBaseUrl({ baseUrl })) {
+    return res.status(400).json({ error: `Invalid public baseUrl: ${baseUrl}` });
   }
 
   Promise.all([validateProxyBaseUrl(baseUrl), lookupProxyLocation(baseUrl)]).then(([validation, lookedUpLocation]) => {
@@ -606,7 +658,7 @@ app.get('/api/proxies/select', (req, res) => {
   res.json({
     success: true,
     proxy: sanitizeProxyResponse(proxy),
-    strategy: 'weighted-score-with-country-bonus-and-random-tie-break'
+    strategy: 'weighted-score-with-country-bonus-and-weighted-random'
   });
 });
 

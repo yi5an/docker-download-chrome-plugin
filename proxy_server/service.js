@@ -11,7 +11,8 @@ const USE_PROXY = process.env.USE_PROXY === 'true';
 const PROXY_URL = process.env.PROXY_URL || 'http://127.0.0.1:7890';
 const REGISTRY_SERVICE_URL = process.env.REGISTRY_SERVICE_URL || 'http://127.0.0.1:3000';
 const PROXY_NODE_ID = process.env.PROXY_NODE_ID || cryptoSafeRandomId('proxy');
-const PROXY_PUBLIC_BASE_URL = process.env.PROXY_PUBLIC_BASE_URL || `http://127.0.0.1:${SERVICE_PORT}`;
+const PUBLIC_HOST = (process.env.PUBLIC_HOST || process.env.PUBLIC_IP || '').trim();
+let PROXY_PUBLIC_BASE_URL = (process.env.PROXY_PUBLIC_BASE_URL || '').trim();
 const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '60000', 10);
 const SPEED_TEST_INTERVAL_MS = parseInt(process.env.SPEED_TEST_INTERVAL_MS || '300000', 10);
 const SPEED_TEST_TARGET = process.env.SPEED_TEST_TARGET || 'https://registry-1.docker.io/v2/';
@@ -33,7 +34,7 @@ console.log(`[Config] Request timeout: ${REQUEST_TIMEOUT / 1000}s, Max concurren
 console.log(`[Config] Stream threshold: ${(STREAM_THRESHOLD / 1024 / 1024).toFixed(2)} MB, Max response: ${(MAX_RESPONSE_SIZE / 1024 / 1024).toFixed(2)} MB`);
 console.log(`[Config] Proxy registry service: ${REGISTRY_SERVICE_URL}`);
 console.log(`[Config] Proxy node id: ${PROXY_NODE_ID}`);
-console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL}`);
+console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL || '(auto-detect pending)'}`);
 
 // 根据环境变量决定是否使用代理
 const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
@@ -92,6 +93,74 @@ const proxyRegistryState = {
 };
 
 let heartbeatTimer = null;
+
+function isPublicHostname(hostname) {
+    if (!hostname) return false;
+    const normalized = hostname.trim().toLowerCase();
+    if (!normalized) return false;
+    if (['localhost', '0.0.0.0'].includes(normalized)) return false;
+    if (normalized === '::1' || normalized === '[::1]') return false;
+    if (normalized.startsWith('127.')) return false;
+    if (normalized.startsWith('10.')) return false;
+    if (normalized.startsWith('192.168.')) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(normalized)) return false;
+    if (normalized.endsWith('.local')) return false;
+    return true;
+}
+
+function normalizePublicBaseUrl(input) {
+    if (!input) return '';
+    try {
+        const url = new URL(input);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            return '';
+        }
+        if (!isPublicHostname(url.hostname)) {
+            return '';
+        }
+        url.hash = '';
+        url.search = '';
+        url.pathname = '';
+        return url.toString().replace(/\/$/, '');
+    } catch (error) {
+        return '';
+    }
+}
+
+async function detectPublicBaseUrl() {
+    const configured = normalizePublicBaseUrl(PROXY_PUBLIC_BASE_URL);
+    if (configured) {
+        return configured;
+    }
+
+    if (PROXY_PUBLIC_BASE_URL) {
+        return PROXY_PUBLIC_BASE_URL.replace(/\/$/, '');
+    }
+
+    if (isPublicHostname(PUBLIC_HOST)) {
+        return `http://${PUBLIC_HOST}:${SERVICE_PORT}`;
+    }
+
+    const providers = [
+        'https://api.ipify.org',
+        'https://ifconfig.me/ip',
+        'https://icanhazip.com'
+    ];
+
+    for (const provider of providers) {
+        try {
+            const response = await fetch(provider, { timeout: 8000 });
+            const ip = (await response.text()).trim();
+            if (isPublicHostname(ip)) {
+                return `http://${ip}:${SERVICE_PORT}`;
+            }
+        } catch (error) {
+            console.warn(`[Config] Failed to detect public IP via ${provider}:`, error.message);
+        }
+    }
+
+    return '';
+}
 
 async function postToRegistry(pathname, payload) {
     try {
@@ -238,6 +307,11 @@ async function lookupLocation() {
 }
 
 async function registerProxyNode() {
+    PROXY_PUBLIC_BASE_URL = await detectPublicBaseUrl();
+    if (!PROXY_PUBLIC_BASE_URL) {
+        throw new Error('Unable to determine a public PROXY_PUBLIC_BASE_URL. Set PROXY_PUBLIC_BASE_URL or PUBLIC_HOST/PUBLIC_IP explicitly.');
+    }
+
     const [speedTest, location] = await Promise.all([runSpeedTest(), lookupLocation()]);
     const result = await postToRegistry('/api/proxies/register', {
         proxyId: PROXY_NODE_ID,
