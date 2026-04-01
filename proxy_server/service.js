@@ -24,6 +24,14 @@ const SPEED_TEST_INTERVAL_MS = parseInt(process.env.SPEED_TEST_INTERVAL_MS || '3
 const SPEED_TEST_TARGET = process.env.SPEED_TEST_TARGET || 'https://registry-1.docker.io/v2/';
 const SPEED_TEST_IMAGE = process.env.SPEED_TEST_IMAGE || 'library/busybox';
 const SPEED_TEST_TAG = process.env.SPEED_TEST_TAG || 'latest';
+const PROXY_API_VERSION = '2026-04-01';
+const PROXY_CAPABILITIES = [
+    'proxy-fetch',
+    'blob-streaming',
+    'blob-resume',
+    'active-transfer-monitoring',
+    'traffic-dashboard'
+];
 
 // 缓存配置（可通过环境变量控制）
 const CACHE_BLOB = process.env.CACHE_BLOB !== 'false'; // 默认启用缓存blob，只有明确设置为false时才禁用
@@ -32,11 +40,13 @@ const CACHE_BLOB_MAX_SIZE = parseInt(process.env.CACHE_BLOB_MAX_SIZE || '200') *
 // 新增：内存和连接配置
 const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || '1800') * 1000; // 请求超时（秒），默认1800秒（30分钟）
 const MAX_CONCURRENT_REQUESTS = parseInt(process.env.MAX_CONCURRENT_REQUESTS || '20'); // 最大并发请求数，默认20
+const UPSTREAM_PARALLEL_REQUESTS = parseInt(process.env.UPSTREAM_PARALLEL_REQUESTS || '3', 10); // 稳定性优先：降低上游最大并发拉取数
 const MAX_RESPONSE_SIZE = parseInt(process.env.MAX_RESPONSE_SIZE || '10000') * 1024 * 1024; // 最大响应大小限制（MB），默认10GB
 const STREAM_THRESHOLD = parseInt(process.env.STREAM_THRESHOLD || '50') * 1024 * 1024; // 流式处理阈值（MB），默认50MB
 
 console.log(`[Config] Blob caching: ${CACHE_BLOB ? 'ENABLED' : 'DISABLED'}, Max size: ${(CACHE_BLOB_MAX_SIZE / 1024 / 1024).toFixed(2)} MB`);
 console.log(`[Config] Request timeout: ${REQUEST_TIMEOUT / 1000}s, Max concurrent: ${MAX_CONCURRENT_REQUESTS}`);
+console.log(`[Config] Upstream parallel limit: ${UPSTREAM_PARALLEL_REQUESTS}`);
 console.log(`[Config] Stream threshold: ${(STREAM_THRESHOLD / 1024 / 1024).toFixed(2)} MB, Max response: ${(MAX_RESPONSE_SIZE / 1024 / 1024).toFixed(2)} MB`);
 console.log(`[Config] Proxy registry service: ${REGISTRY_SERVICE_URL}`);
 console.log(`[Config] Proxy node id: ${PROXY_NODE_ID}`);
@@ -44,7 +54,8 @@ console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL || '(auto-d
 
 // 根据环境变量决定是否使用代理
 const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
-let proxiedFetchQueue = Promise.resolve();
+let activeUpstreamRequests = 0;
+const upstreamWaitQueue = [];
 
 function shouldUseUpstreamProxy(targetUrl) {
     if (!proxyAgent || !targetUrl) return false;
@@ -71,25 +82,42 @@ function withUpstreamProxy(targetUrl, options = {}) {
 
 const UPSTREAM_RETRY_ATTEMPTS = parseInt(process.env.UPSTREAM_RETRY_ATTEMPTS || '3', 10);
 const UPSTREAM_RETRY_DELAY_MS = parseInt(process.env.UPSTREAM_RETRY_DELAY_MS || '500', 10);
-const RETRYABLE_ERRORS = ['socket hang up', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'socket closed', 'network'];
+const BLOB_STREAM_RETRY_ATTEMPTS = parseInt(process.env.BLOB_STREAM_RETRY_ATTEMPTS || '4', 10);
+const BLOB_FIRST_BYTE_TIMEOUT_MS = parseInt(process.env.BLOB_FIRST_BYTE_TIMEOUT_MS || '25000', 10);
+const RETRYABLE_ERRORS = ['socket hang up', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'socket closed', 'network', 'premature close'];
+// 断点续传最大重试次数（上游连接断开时尝试用 Range 头恢复传输）
+const STREAM_RESUME_MAX_ATTEMPTS = parseInt(process.env.STREAM_RESUME_MAX_ATTEMPTS || '3', 10);
+
+function acquireUpstreamSlot() {
+    return new Promise((resolve) => {
+        if (activeUpstreamRequests < UPSTREAM_PARALLEL_REQUESTS) {
+            activeUpstreamRequests++;
+            return resolve();
+        }
+        upstreamWaitQueue.push(resolve);
+    });
+}
+
+function releaseUpstreamSlot() {
+    if (upstreamWaitQueue.length > 0) {
+        const next = upstreamWaitQueue.shift();
+        next();
+        return;
+    }
+    activeUpstreamRequests = Math.max(0, activeUpstreamRequests - 1);
+}
 
 async function runSerializedUpstreamRequest(targetUrl, runner, { skipSerialization = false } = {}) {
-    const shouldRetry = shouldUseUpstreamProxy(targetUrl);
-    if (!shouldRetry || skipSerialization) {
+    const shouldControl = shouldUseUpstreamProxy(targetUrl);
+    if (!shouldControl || skipSerialization || UPSTREAM_PARALLEL_REQUESTS <= 0) {
         return await runner();
     }
 
-    const previous = proxiedFetchQueue;
-    let release;
-    proxiedFetchQueue = new Promise(resolve => {
-        release = resolve;
-    });
-
-    await previous;
+    await acquireUpstreamSlot();
     try {
         return await runner();
     } finally {
-        release();
+        releaseUpstreamSlot();
     }
 }
 
@@ -544,6 +572,7 @@ async function reportProxyDownloadEvent(payload) {
 // ==================== 连接管理和并发控制 ====================
 const activeRequests = new Set();
 const activeConnections = new Map();
+const activeTransfers = new Map();
 
 // 内存监控
 function checkMemoryUsage() {
@@ -571,6 +600,9 @@ class RequestController {
     }
 
     async cleanup() {
+        if (this.aborted) {
+            return;
+        }
         this.aborted = true;
         this.controller.abort();
         activeRequests.delete(this.id);
@@ -596,6 +628,32 @@ const trafficStats = {
 };
 
 const recentProxyRequests = [];
+
+function parseBlobDigest(targetUrl = '') {
+    const match = targetUrl.match(/\/blobs\/(sha256:[a-f0-9]+)/i);
+    return match ? match[1] : '';
+}
+
+function upsertActiveTransfer(id, patch) {
+    if (!id) return;
+    const existing = activeTransfers.get(id) || {};
+    activeTransfers.set(id, {
+        ...existing,
+        ...patch,
+        id,
+        updatedAt: new Date().toISOString()
+    });
+}
+
+function removeActiveTransfer(id) {
+    if (!id) return;
+    activeTransfers.delete(id);
+}
+
+function getActiveTransfers() {
+    return Array.from(activeTransfers.values())
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
 
 function appendRecentProxyRequest(entry) {
     recentProxyRequests.unshift({
@@ -996,6 +1054,8 @@ app.get('/health', (req, res) => {
     res.json({
         ok: true,
         service: 'docker-download-proxy',
+        apiVersion: PROXY_API_VERSION,
+        capabilities: PROXY_CAPABILITIES,
         proxyNodeId: PROXY_NODE_ID,
         registered: proxyRegistryState.registered,
         now: new Date().toISOString()
@@ -1051,14 +1111,36 @@ app.get('/proxy', async (req, res) => {
     // 创建请求控制器
     const requestController = new RequestController();
     activeRequests.add(requestController.id);
-    const handleClientDisconnect = () => {
-        if (!requestController.aborted) {
-            console.warn('[proxy] 客户端连接已断开，终止上游请求:', targetUrl || '(unknown)');
-            requestController.cleanup();
+
+    let requestCompleted = false;
+    let clientDisconnected = false;
+
+    const onClientAborted = () => {
+        if (requestCompleted || requestController.aborted) {
+            return;
+        }
+        clientDisconnected = true;
+        console.warn('[proxy] 客户端连接已断开，终止上游请求:', targetUrl || '(unknown)');
+        requestController.cleanup();
+    };
+
+    const onResponseClose = () => {
+        // res.close 在正常结束后也会触发，只有非正常结束才按断开处理
+        const closedBeforeFinish = !res.writableEnded && !res.writableFinished;
+        if (closedBeforeFinish) {
+            onClientAborted();
         }
     };
-    req.once('aborted', handleClientDisconnect);
-    res.once('close', handleClientDisconnect);
+
+    const onResponseFinish = () => {
+        requestCompleted = true;
+        req.off('aborted', onClientAborted);
+        res.off('close', onResponseClose);
+    };
+
+    req.once('aborted', onClientAborted);
+    res.once('close', onResponseClose);
+    res.once('finish', onResponseFinish);
 
     // 跟踪响应是否已发送，避免重复发送
     let responseSent = false;
@@ -1219,71 +1301,270 @@ app.get('/proxy', async (req, res) => {
             res.set('X-Cache', 'MISS');
             res.set('Content-Type', 'application/octet-stream');
             res.flushHeaders();
+
+            // 启用 TCP keepalive，防止中间代理/防火墙因空闲断开连接
+            if (req.socket && !req.socket.destroyed) {
+                req.socket.setKeepAlive(true, 10000); // 每10秒发TCP keepalive探测包
+            }
+
             console.log('[Stream-Native] 响应头已发送 (chunked)，等待上游数据...');
 
-            const nativeResp = await fetchWithRetry(cleanUrl, () => nativeStreamFetch(cleanUrl, nativeOpts));
-            const contentType = nativeResp.headers['content-type'];
-            const contentLength = parseInt(nativeResp.headers['content-length'] || '0');
-            const finalUrl = nativeResp.url || cleanUrl;
-            if (finalUrl !== cleanUrl) {
-                console.log('[proxy] 上游重定向:', cleanUrl, '->', finalUrl);
-            }
-
-            console.log('[proxy] 响应状态:', nativeResp.status, 'content-type:', contentType, 'content-length:', contentLength, 'final-url:', finalUrl);
-
-            if (contentLength > MAX_RESPONSE_SIZE) {
-                console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
-                nativeResp.bodyStream.resume();
-                requestController.cleanup();
-                res.end('Payload Too Large');
-                return;
-            }
-
-            if (nativeResp.status !== 200) {
-                // 响应头已发送（200），将上游错误信息写入 body
-                const chunks = [];
-                nativeResp.bodyStream.on('data', c => chunks.push(c));
-                await new Promise((resolve, reject) => {
-                    nativeResp.bodyStream.on('end', resolve);
-                    nativeResp.bodyStream.on('error', reject);
-                });
-                console.error('[Stream-Native] 上游返回非200:', nativeResp.status);
-                res.end(Buffer.concat(chunks));
-                requestController.cleanup();
-                return;
-            }
-
-            // 流式传输大文件
             let bytesWritten = 0;
             let nextProgressLogAt = 10 * 1024 * 1024;
             let streamTimeout = null;
             let streamProgressTimer = null;
+            let contentLength = 0;
+            let currentFinalUrl = cleanUrl;
+            const transferId = `transfer-${requestController.id}`;
+            const transferDigest = parseBlobDigest(cleanUrl);
+
+            upsertActiveTransfer(transferId, {
+                requestId: requestController.id,
+                downloadId: downloadMetadata.downloadId || '',
+                image: downloadMetadata.image || '',
+                tag: downloadMetadata.tag || '',
+                arch: downloadMetadata.arch || '',
+                digest: transferDigest,
+                url: cleanUrl,
+                finalUrl: cleanUrl,
+                type: 'blob',
+                status: 'streaming',
+                bytesWritten: 0,
+                contentLength: 0,
+                speedMbps: 0,
+                elapsedMs: 0,
+                startedAt: new Date(startTime).toISOString()
+            });
+
+            async function openBlobStream(startOffset = 0) {
+                const requestHeaders = startOffset > 0
+                    ? { ...nativeHeaders, Range: `bytes=${startOffset}-` }
+                    : nativeHeaders;
+                const requestAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL, { keepAlive: false }) : undefined;
+                const requestOpts = {
+                    headers: requestHeaders,
+                    agent: requestAgent,
+                    signal: requestController.signal,
+                    timeout: REQUEST_TIMEOUT
+                };
+
+                const response = await runSerializedUpstreamRequest(cleanUrl, () =>
+                    fetchWithRetry(cleanUrl, () => nativeStreamFetch(cleanUrl, requestOpts))
+                );
+                const responseContentType = response.headers['content-type'];
+                const responseContentLength = parseInt(response.headers['content-length'] || '0');
+                const responseFinalUrl = response.url || cleanUrl;
+
+                if (responseFinalUrl !== cleanUrl) {
+                    console.log('[proxy] 上游重定向:', cleanUrl, '->', responseFinalUrl);
+                }
+
+                console.log('[proxy] 响应状态:', response.status, 'content-type:', responseContentType, 'content-length:', responseContentLength, 'final-url:', responseFinalUrl);
+
+                if (responseContentLength > MAX_RESPONSE_SIZE) {
+                    console.error('[proxy] 响应过大，超过限制:', responseContentLength, '>', MAX_RESPONSE_SIZE);
+                    response.bodyStream.resume();
+                    throw new Error('Payload Too Large');
+                }
+
+                if (startOffset > 0 && response.status !== 206) {
+                    response.bodyStream.resume();
+                    throw new Error(`Range resume failed: expected 206, got ${response.status}`);
+                }
+
+                if (startOffset === 0 && response.status !== 200) {
+                    const chunks = [];
+                    response.bodyStream.on('data', c => chunks.push(c));
+                    await new Promise((resolve, reject) => {
+                        response.bodyStream.on('end', resolve);
+                        response.bodyStream.on('error', reject);
+                    });
+                    throw new Error(`Upstream returned ${response.status}: ${Buffer.concat(chunks).toString('utf8')}`);
+                }
+
+                if (!contentLength) {
+                    contentLength = startOffset > 0 && response.status === 206
+                        ? startOffset + responseContentLength
+                        : responseContentLength;
+                }
+
+                currentFinalUrl = responseFinalUrl;
+                upsertActiveTransfer(transferId, {
+                    status: response.status === 206 ? 'resuming' : 'streaming',
+                    url: cleanUrl,
+                    finalUrl: responseFinalUrl,
+                    contentLength,
+                    bytesWritten,
+                    elapsedMs: Date.now() - startTime
+                });
+                return response.bodyStream;
+            }
+
             try {
                 streamTimeout = setTimeout(() => {
                     if (!requestController.aborted) {
-                        console.error('[Stream-Native] 流式传输超时，终止上游请求:', finalUrl);
+                        console.error('[Stream-Native] 流式传输超时，终止上游请求:', currentFinalUrl);
                         requestController.cleanup();
-                        nativeResp.bodyStream.destroy(new Error('Request timeout'));
+                        currentStream.destroy(new Error('Request timeout'));
                     }
                 }, REQUEST_TIMEOUT);
 
                 streamProgressTimer = setInterval(() => {
                     const elapsedMs = Date.now() - startTime;
                     const speedMbps = elapsedMs > 0 ? Number((((bytesWritten * 8) / elapsedMs) / 1000).toFixed(2)) : 0;
+                    upsertActiveTransfer(transferId, {
+                        status: 'streaming',
+                        bytesWritten,
+                        contentLength,
+                        speedMbps,
+                        elapsedMs,
+                        finalUrl: currentFinalUrl
+                    });
                     console.log(`[Stream-Native] Ongoing: ${bytesWritten} / ${contentLength} bytes, ${speedMbps} Mbps, elapsed ${elapsedMs}ms`);
                 }, 5000);
 
-                nativeResp.bodyStream.on('data', chunk => {
-                    bytesWritten += chunk.length;
-                    while (bytesWritten >= nextProgressLogAt) {
-                        console.log(`[Stream-Native] Progress: ${bytesWritten} / ${contentLength}`);
-                        nextProgressLogAt += 10 * 1024 * 1024;
+                let blobAttempt = 0;
+                let resumeAttempts = 0;
+                let currentStream = await openBlobStream(0);
+                while (blobAttempt < BLOB_STREAM_RETRY_ATTEMPTS) {
+                    let firstByteTimer = null;
+
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const clearFirstByteTimer = () => {
+                                if (firstByteTimer) {
+                                    clearTimeout(firstByteTimer);
+                                    firstByteTimer = null;
+                                }
+                            };
+
+                            if (bytesWritten === 0) {
+                                firstByteTimer = setTimeout(() => {
+                                    const noProgress = bytesWritten === 0 && !requestController.aborted;
+                                    if (!noProgress) {
+                                        return;
+                                    }
+                                    console.warn(`[Stream-Native] First byte timeout after ${BLOB_FIRST_BYTE_TIMEOUT_MS}ms, retrying blob request: ${cleanUrl}`);
+                                    currentStream.destroy(new Error('first byte timeout'));
+                                }, BLOB_FIRST_BYTE_TIMEOUT_MS);
+                            }
+
+                            currentStream.on('data', (chunk) => {
+                                // 检查客户端是否已断开
+                                if (res.destroyed || res.writableEnded) {
+                                    clearFirstByteTimer();
+                                    currentStream.destroy();
+                                    reject(new Error('客户端已断开'));
+                                    return;
+                                }
+                                clearFirstByteTimer();
+                                const canContinue = res.write(chunk);
+                                bytesWritten += chunk.length;
+                                upsertActiveTransfer(transferId, {
+                                    status: 'streaming',
+                                    bytesWritten,
+                                    contentLength,
+                                    elapsedMs: Date.now() - startTime,
+                                    finalUrl: currentFinalUrl
+                                });
+                                while (bytesWritten >= nextProgressLogAt) {
+                                    console.log(`[Stream-Native] Progress: ${bytesWritten} / ${contentLength}`);
+                                    nextProgressLogAt += 10 * 1024 * 1024;
+                                }
+                                // 背压处理：暂停读取直到客户端消费完数据
+                                if (!canContinue) {
+                                    res.once('drain', () => currentStream.resume());
+                                    currentStream.pause();
+                                }
+                            });
+
+                            currentStream.on('end', () => {
+                                clearFirstByteTimer();
+                                resolve();
+                            });
+
+                            currentStream.on('error', (err) => {
+                                clearFirstByteTimer();
+                                // 区分客户端断开和上游断开
+                                if (res.destroyed || res.writableEnded) {
+                                    reject(new Error('客户端已断开'));
+                                } else {
+                                    reject(err);
+                                }
+                            });
+                        });
+                    } catch (streamErr) {
+                        const errMsg = (streamErr.message || '').toLowerCase();
+                        // 客户端断开 - 无法恢复
+                        if (errMsg.includes('客户端已断开') || res.destroyed || res.writableEnded) {
+                            console.warn('[Stream-Native] 客户端连接已断开，已传输:', bytesWritten, 'bytes');
+                            throw streamErr;
+                        }
+
+                        // 上游断开 - 尝试断点续传
+                        const isUpstreamError = RETRYABLE_ERRORS.some(kw => errMsg.includes(kw));
+                        if (isUpstreamError && bytesWritten > 0 && resumeAttempts < STREAM_RESUME_MAX_ATTEMPTS && contentLength > bytesWritten) {
+                            resumeAttempts++;
+                            const remaining = contentLength - bytesWritten;
+                            console.warn(`[Stream-Native] 上游流断开 (${streamErr.message})，已传输 ${bytesWritten}/${contentLength} bytes，尝试断点续传 (${resumeAttempts}/${STREAM_RESUME_MAX_ATTEMPTS})...`);
+                            upsertActiveTransfer(transferId, {
+                                status: 'resuming',
+                                bytesWritten,
+                                contentLength,
+                                elapsedMs: Date.now() - startTime,
+                                error: streamErr.message,
+                                remainingBytes: remaining
+                            });
+
+                            // 等待一小段时间后用 Range 头续传
+                            await new Promise(r => setTimeout(r, 500 * resumeAttempts));
+
+                            try {
+                                const resumeHeaders = { ...nativeHeaders, 'Range': `bytes=${bytesWritten}-` };
+                                // 续传用新的 agent（旧 agent 的连接可能已断）
+                                const resumeAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL, { keepAlive: false }) : undefined;
+                                const resumeOpts = { headers: resumeHeaders, agent: resumeAgent, signal: requestController.signal, timeout: REQUEST_TIMEOUT };
+                                const resumeResp = await nativeStreamFetch(currentFinalUrl, resumeOpts);
+
+                                if (resumeResp.status === 206 || resumeResp.status === 200) {
+                                    console.log(`[Stream-Native] 断点续传成功，上游状态: ${resumeResp.status}，继续从 ${bytesWritten} bytes 传输`);
+                                    currentStream = resumeResp.bodyStream;
+                                    currentFinalUrl = resumeResp.url || currentFinalUrl;
+                                    continue; // 继续外层 while 循环
+                                } else {
+                                    console.error(`[Stream-Native] 断点续传失败，上游返回: ${resumeResp.status}`);
+                                    resumeResp.bodyStream.resume();
+                                    throw streamErr; // 抛出原始错误
+                                }
+                            } catch (resumeErr) {
+                                console.error(`[Stream-Native] 断点续传请求失败: ${resumeErr.message}`);
+                                // 交给外层 blob 级重试
+                            }
+                        }
+
+                        const shouldRetryBlob = RETRYABLE_ERRORS.some(kw => errMsg.includes(kw));
+                        if (shouldRetryBlob && blobAttempt < BLOB_STREAM_RETRY_ATTEMPTS - 1) {
+                            blobAttempt++;
+                            const retryOffset = bytesWritten;
+                            const retryDelay = 1000 * blobAttempt;
+                            console.warn(`[Stream-Native] Blob transfer retry ${blobAttempt}/${BLOB_STREAM_RETRY_ATTEMPTS - 1}, offset=${retryOffset}, reason=${streamErr.message}`);
+                            await new Promise(r => setTimeout(r, retryDelay));
+                            currentStream = await openBlobStream(retryOffset);
+                            continue;
+                        }
+
+                        throw streamErr;
                     }
-                });
 
-                await pipelineAsync(nativeResp.bodyStream, res);
+                    // 流正常结束
+                    break;
+                }
 
-                responseSent = true;
+                if (resumeAttempts > 0) {
+                    console.log(`[Stream-Native] 传输完成（经历 ${resumeAttempts} 次断点续传），总字节数: ${bytesWritten}`);
+                }
+
+                res.end();
                 recordTraffic(cleanUrl, bytesWritten, false);
                 if (downloadMetadata.downloadId) {
                     reportProxyDownloadEvent({
@@ -1294,23 +1575,35 @@ app.get('/proxy', async (req, res) => {
                     });
                 }
                 appendRecentProxyRequest({
-                    url: finalUrl,
+                    url: currentFinalUrl,
                     type: 'blob',
-                    status: nativeResp.status,
+                    status: 200,
                     fromCache: false,
                     bytes: bytesWritten,
                     durationMs: Date.now() - startTime
                 });
                 recordTransferSample(bytesWritten, Date.now() - startTime);
                 const duration = Date.now() - startTime;
+                removeActiveTransfer(transferId);
                 console.log('[proxy] 原生流式传输完成，耗时:', duration, 'ms');
                 requestController.cleanup();
                 return;
             } catch (err) {
                 console.error('[Stream-Native] 流式传输失败:', err.message);
+                upsertActiveTransfer(transferId, {
+                    status: 'failed',
+                    bytesWritten,
+                    contentLength,
+                    elapsedMs: Date.now() - startTime,
+                    finalUrl: currentFinalUrl,
+                    error: err.message
+                });
+                // 尝试结束响应（如果还能写的话）
+                try { if (!res.writableEnded) res.end(); } catch (_) {}
                 requestController.cleanup();
                 throw err;
             } finally {
+                removeActiveTransfer(transferId);
                 if (streamTimeout) {
                     clearTimeout(streamTimeout);
                 }
@@ -1426,8 +1719,11 @@ app.get('/proxy', async (req, res) => {
         }
         requestController.cleanup();
     } finally {
+        req.off('aborted', onClientAborted);
+        res.off('close', onResponseClose);
+        res.off('finish', onResponseFinish);
         // 确保清理资源
-        if (!responseSent) {
+        if (!responseSent || clientDisconnected) {
             requestController.cleanup();
         }
     }
@@ -1572,6 +1868,8 @@ app.get('/api/node-status', (req, res) => {
     try {
         res.json({
             proxyNodeId: PROXY_NODE_ID,
+            apiVersion: PROXY_API_VERSION,
+            capabilities: PROXY_CAPABILITIES,
             registered: proxyRegistryState.registered,
             lastHeartbeatAt: proxyRegistryState.lastHeartbeatAt,
             lastSpeedTest: proxyRegistryState.lastSpeedTest,
@@ -1590,6 +1888,8 @@ app.get('/api/node-status', (req, res) => {
                 cacheHits: trafficStats.cacheHits,
                 cacheMisses: trafficStats.cacheMisses
             },
+            activeRequestCount: activeRequests.size,
+            activeTransfers: getActiveTransfers(),
             cache: responseCache.getStats(),
             recentRequests: recentProxyRequests.slice(0, 20)
         });

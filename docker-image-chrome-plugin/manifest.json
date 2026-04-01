@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Docker Image One-Click Downloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Directly download a Docker image of a specific architecture from the Docker Hub image page",
   "permissions": [
     "activeTab",

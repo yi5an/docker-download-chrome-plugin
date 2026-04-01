@@ -16,6 +16,13 @@ const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || path.join(DATA_DIR, 'GeoLite2-City.mmdb');
 const ALLOW_PRIVATE_PROXY_BASE_URL = process.env.ALLOW_PRIVATE_PROXY_BASE_URL === 'true';
+const REGISTRY_API_VERSION = '2026-04-01';
+const REGISTRY_CAPABILITIES = [
+  'proxy-selection',
+  'download-lifecycle-tracking',
+  'proxy-heartbeat',
+  'proxy-download-events'
+];
 
 app.set('trust proxy', true);
 app.use(cors());
@@ -571,7 +578,13 @@ async function validateProxyBaseUrl(baseUrl) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'proxy-registry', now: nowIso() });
+  res.json({
+    ok: true,
+    service: 'proxy-registry',
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES,
+    now: nowIso()
+  });
 });
 
 app.post('/api/proxies/register', (req, res) => {
@@ -693,7 +706,9 @@ app.get('/api/proxies/select', (req, res) => {
   res.json({
     success: true,
     proxy: sanitizeProxyResponse(proxy),
-    strategy: 'weighted-score-with-country-bonus-and-weighted-random'
+    strategy: 'weighted-score-with-country-bonus-and-weighted-random',
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES
   });
 });
 
@@ -706,7 +721,12 @@ app.get('/api/proxies', (req, res) => {
     ...sanitizeProxyResponse(proxy),
     healthy: isProxyHealthy(proxy)
   }));
-  res.json({ total: proxies.length, proxies });
+  res.json({
+    total: proxies.length,
+    proxies,
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES
+  });
 });
 
 app.post('/api/downloads/start', async (req, res) => {

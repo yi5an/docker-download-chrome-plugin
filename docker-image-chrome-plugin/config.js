@@ -13,7 +13,7 @@ const FALLBACK_PROXY_CONFIG = {
   domestic: {
     proxyId: 'fallback-domestic',
     name: 'Fallback Domestic',
-    baseUrl: 'http://123.57.165.38:7000',
+    baseUrl: 'http://123.57.165.38:7001',
     proxyPath: '/proxy?url=',
     trackPath: '/track',
     location: {
@@ -24,7 +24,7 @@ const FALLBACK_PROXY_CONFIG = {
   overseas: {
     proxyId: 'fallback-overseas',
     name: 'Fallback Overseas',
-    baseUrl: 'https://chrome.plugin.yi5an.xyz',
+    baseUrl: 'https://chrome.plugin.yi5an.xyz:7001',
     proxyPath: '/proxy?url=',
     trackPath: '/track',
     location: {

@@ -529,8 +529,138 @@ async function downloadSingleLayer(image, layer, token) {
       });
     });
 
+    // Model / OCI artifact 风格：无 OS/ARCH 列，按 tag 卡片注入单按钮
+    injectModelTagButtons();
+
     const buttonCountAfter = document.querySelectorAll('.docker-download-btn').length;
     console.log(`[Docker Download Plugin] Injection complete. Buttons before: ${buttonCountBefore}, after: ${buttonCountAfter}`);
+  }
+
+  function findTagCardCandidates() {
+    const commandNodes = Array.from(document.querySelectorAll('div, span, code, p')).filter(node => {
+      if (!(node instanceof HTMLElement)) return false;
+      const text = (node.textContent || '').trim();
+      if (!text || text.length > 240) return false;
+      return /docker\s+model\s+pull\s+[a-z0-9/_-]+:[^\s]+/i.test(text);
+    });
+
+    const cards = [];
+    const seen = new Set();
+
+    commandNodes.forEach(node => {
+      const cardRoot = node.closest('.MuiCard-root');
+      if (cardRoot) {
+        if (!seen.has(cardRoot)) {
+          seen.add(cardRoot);
+          cards.push(cardRoot);
+        }
+        return;
+      }
+
+      let current = node.parentElement;
+      while (current && current !== document.body) {
+        const text = (current.textContent || '').trim();
+        const hasDigestSection = /digest/i.test(text);
+        const hasTypeSection = /type/i.test(text);
+        const hasModelType = /type\s*model/i.test(text) || /model/i.test(text);
+        const hasPullCommand = /docker\s+model\s+pull\s+[a-z0-9/_-]+:[^\s]+/i.test(text);
+
+        if (hasDigestSection && hasTypeSection && hasModelType && hasPullCommand) {
+          if (!seen.has(current)) {
+            seen.add(current);
+            cards.push(current);
+          }
+          break;
+        }
+
+        current = current.parentElement;
+      }
+    });
+
+    return cards;
+  }
+
+  function extractTagFromCard(card, defaultTag) {
+    const text = (card.textContent || '').trim();
+    const pullMatch = text.match(/docker\s+model\s+pull\s+([a-z0-9/_-]+):([^\s]+)/i) ||
+      text.match(/docker\s+pull\s+([a-z0-9/_-]+):([^\s]+)/i);
+    if (pullMatch && pullMatch[2]) {
+      return pullMatch[2].trim();
+    }
+
+    const normalizedLines = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+    const tagIndex = normalizedLines.findIndex(line => line.toUpperCase() === 'TAG');
+    if (tagIndex !== -1 && normalizedLines[tagIndex + 1]) {
+      return normalizedLines[tagIndex + 1];
+    }
+
+    return defaultTag;
+  }
+
+  function resolveModelButtonAnchor(card) {
+    const commandCode = Array.from(card.querySelectorAll('code')).find(el =>
+      /docker\s+model\s+pull/i.test((el.textContent || '').trim())
+    );
+    if (commandCode) {
+      const pre = commandCode.closest('pre');
+      if (pre && pre.parentElement) {
+        return pre.parentElement;
+      }
+      if (commandCode.parentElement) {
+        return commandCode.parentElement;
+      }
+    }
+
+    const compactCommandBlock = Array.from(card.querySelectorAll('div, span, p')).find(el => {
+      const text = (el.textContent || '').trim();
+      return /docker\s+model\s+pull/i.test(text) && text.length < 80;
+    });
+    if (compactCommandBlock && compactCommandBlock.parentElement) {
+      return compactCommandBlock.parentElement;
+    }
+
+    const tagHeader = Array.from(card.querySelectorAll('*')).find(el =>
+      (el.textContent || '').trim().toUpperCase() === 'TAG'
+    );
+    if (tagHeader && tagHeader.parentElement) {
+      return tagHeader.parentElement;
+    }
+
+    return card;
+  }
+
+  function injectModelTagButtons() {
+    const { image, tag: defaultTag } = getImageAndTagFromURL();
+    if (!image) return;
+    if (document.querySelector('td.osArchItem, .arch-cell') || Array.from(document.querySelectorAll('th, td, div, span')).some(el => /OS\/ARCH/i.test((el.textContent || '').trim()))) {
+      return;
+    }
+
+    const cards = findTagCardCandidates();
+    console.log('[Docker Download Plugin] Model tag card candidates:', cards.length);
+
+    cards.forEach(card => {
+      const tag = extractTagFromCard(card, defaultTag);
+      const anchor = resolveModelButtonAnchor(card);
+      if (!anchor) return;
+
+      card.querySelectorAll('.docker-download-btn, .docker-download-unsupported').forEach(el => el.remove());
+
+      const unsupportedHint = document.createElement('span');
+      unsupportedHint.className = 'docker-download-unsupported';
+      unsupportedHint.textContent = 'Model 暂不支持下载';
+      unsupportedHint.title = `${image}:${tag} 属于 Docker Model / OCI artifact，当前插件暂不支持下载`;
+      unsupportedHint.style.display = 'inline-block';
+      unsupportedHint.style.marginLeft = '8px';
+      unsupportedHint.style.fontSize = '12px';
+      unsupportedHint.style.color = '#8a6d3b';
+      unsupportedHint.style.whiteSpace = 'nowrap';
+      unsupportedHint.style.verticalAlign = 'middle';
+      anchor.appendChild(unsupportedHint);
+    });
   }
 
   function getTableColumnMetadata(table) {
