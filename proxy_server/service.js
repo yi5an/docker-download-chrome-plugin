@@ -1212,6 +1212,15 @@ app.get('/proxy', async (req, res) => {
                 timeout: REQUEST_TIMEOUT,
             };
 
+            // 立即发送响应头（chunked 编码），保持客户端连接活跃
+            // 插件收到响应头后不会超时，会等待 body 数据
+            responseSent = true;
+            res.statusCode = 200;
+            res.set('X-Cache', 'MISS');
+            res.set('Content-Type', 'application/octet-stream');
+            res.flushHeaders();
+            console.log('[Stream-Native] 响应头已发送 (chunked)，等待上游数据...');
+
             const nativeResp = await fetchWithRetry(cleanUrl, () => nativeStreamFetch(cleanUrl, nativeOpts));
             const contentType = nativeResp.headers['content-type'];
             const contentLength = parseInt(nativeResp.headers['content-length'] || '0');
@@ -1226,37 +1235,25 @@ app.get('/proxy', async (req, res) => {
                 console.error('[proxy] 响应过大，超过限制:', contentLength, '>', MAX_RESPONSE_SIZE);
                 nativeResp.bodyStream.resume();
                 requestController.cleanup();
-                return res.status(413).send('Payload Too Large');
+                res.end('Payload Too Large');
+                return;
             }
 
             if (nativeResp.status !== 200) {
-                // 非 200 响应，读取后返回
+                // 响应头已发送（200），将上游错误信息写入 body
                 const chunks = [];
                 nativeResp.bodyStream.on('data', c => chunks.push(c));
                 await new Promise((resolve, reject) => {
                     nativeResp.bodyStream.on('end', resolve);
                     nativeResp.bodyStream.on('error', reject);
                 });
-                const responseData = Buffer.concat(chunks);
+                console.error('[Stream-Native] 上游返回非200:', nativeResp.status);
+                res.end(Buffer.concat(chunks));
                 requestController.cleanup();
-                if (!responseSent) {
-                    responseSent = true;
-                    res.status(nativeResp.status);
-                    res.set('X-Cache', 'MISS');
-                    if (contentType) res.set('content-type', contentType);
-                    res.send(responseData);
-                }
                 return;
             }
 
             // 流式传输大文件
-            res.status(nativeResp.status);
-            res.set('X-Cache', 'MISS');
-            if (contentType) res.set('content-type', contentType);
-            if (contentLength > 0) {
-                res.set('content-length', String(contentLength));
-            }
-
             let bytesWritten = 0;
             let nextProgressLogAt = 10 * 1024 * 1024;
             let streamTimeout = null;
