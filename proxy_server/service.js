@@ -43,7 +43,7 @@ console.log(`[Config] Proxy node id: ${PROXY_NODE_ID}`);
 console.log(`[Config] Proxy public base URL: ${PROXY_PUBLIC_BASE_URL || '(auto-detect pending)'}`);
 
 // 根据环境变量决定是否使用代理
-const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL, { keepAlive: false }) : null;
+const proxyAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL) : null;
 let proxiedFetchQueue = Promise.resolve();
 
 function shouldUseUpstreamProxy(targetUrl) {
@@ -1203,10 +1203,11 @@ app.get('/proxy', async (req, res) => {
                 ...headers
             };
 
-            const { agent: useAgent } = withUpstreamProxy(cleanUrl, {});
+            // blob 下载用独立的 agent（keepAlive: false），避免与全局 agent 的隧道复用冲突
+            const blobAgent = USE_PROXY ? new HttpsProxyAgent(PROXY_URL, { keepAlive: false }) : undefined;
             const nativeOpts = {
                 headers: nativeHeaders,
-                agent: useAgent || proxyAgent || undefined,
+                agent: blobAgent,
                 signal: requestController.signal,
                 timeout: REQUEST_TIMEOUT,
             };
