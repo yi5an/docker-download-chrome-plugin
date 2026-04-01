@@ -150,7 +150,9 @@ function nativeStreamFetch(url, { headers = {}, agent, signal, timeout = 120000 
                 try {
                     const redirectHost = new URL(redirectUrl).hostname;
                     if (redirectHost !== urlObj.hostname) {
+                        // 删除时需兼容大小写（Express 传小写，代码里可能用大写 A）
                         delete redirectHeaders['authorization'];
+                        delete redirectHeaders['Authorization'];
                     }
                 } catch (_) {}
                 resolve(nativeStreamFetch(redirectUrl, { headers: redirectHeaders, agent, signal, timeout }));
