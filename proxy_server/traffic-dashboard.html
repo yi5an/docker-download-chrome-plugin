@@ -185,6 +185,11 @@
     </section>
 
     <section class="panel">
+      <h2>正在下载层</h2>
+      <div id="activeTransfers"><div class="empty">加载中...</div></div>
+    </section>
+
+    <section class="panel">
       <h2>最近代理请求</h2>
       <div class="table-wrap">
         <table>
@@ -227,6 +232,18 @@
 
     function percent(value) {
       return `${Number(value || 0).toFixed(1)}%`;
+    }
+
+    function shortDigest(digest) {
+      if (!digest) return '-';
+      return digest.length > 24 ? `${digest.slice(0, 24)}...` : digest;
+    }
+
+    function fmtDuration(ms) {
+      const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}m ${seconds}s`;
     }
 
     function renderBar(label, current, total, displayValue) {
@@ -285,6 +302,35 @@
         renderBar('唯一镜像', tracking.unique || 0, Math.max(tracking.total || 0, 1), `${tracking.unique || 0}`),
         renderBar('今日下载', (tracking.dailyStats && tracking.dailyStats[today]) || 0, Math.max(tracking.total || 0, 1), `${(tracking.dailyStats && tracking.dailyStats[today]) || 0}`)
       ].join('');
+
+      const activeTransfers = document.getElementById('activeTransfers');
+      if (!nodeStatus.activeTransfers || !nodeStatus.activeTransfers.length) {
+        activeTransfers.innerHTML = '<div class="empty">当前没有正在下载的层</div>';
+      } else {
+        activeTransfers.innerHTML = nodeStatus.activeTransfers.map(item => {
+          const total = Number(item.contentLength || 0);
+          const current = Number(item.bytesWritten || 0);
+          const progressText = total > 0 ? `${fmtBytes(current)} / ${fmtBytes(total)}` : fmtBytes(current);
+          const progressRow = renderBar(
+            `${item.image || '-'}:${item.tag || '-'} [${item.arch || '-'}]`,
+            current,
+            total || Math.max(current, 1),
+            progressText
+          );
+
+          return `
+            <div style="padding:14px 0;border-bottom:1px solid var(--line);">
+              ${progressRow}
+              <div class="kv" style="grid-template-columns:110px 1fr; margin-top:10px;">
+                <div>Digest</div><div class="mono">${shortDigest(item.digest)}</div>
+                <div>状态</div><div>${statusTag(item.status || '-')}</div>
+                <div>速度</div><div>${Number(item.speedMbps || 0).toFixed(2)} Mbps</div>
+                <div>耗时</div><div>${fmtDuration(item.elapsedMs || 0)}</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
 
       const recentRequests = document.getElementById('recentRequests');
       if (!nodeStatus.recentRequests || !nodeStatus.recentRequests.length) {

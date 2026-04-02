@@ -15,10 +15,34 @@ const LEGACY_DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
 const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 10);
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || path.join(DATA_DIR, 'GeoLite2-City.mmdb');
+const ALLOW_PRIVATE_PROXY_BASE_URL = process.env.ALLOW_PRIVATE_PROXY_BASE_URL === 'true';
+const REGISTRY_API_VERSION = '2026-04-01';
+const REGISTRY_CAPABILITIES = [
+  'proxy-selection',
+  'download-lifecycle-tracking',
+  'proxy-heartbeat',
+  'proxy-download-events'
+];
 
 app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+
+// 请求日志中间件（静默路由不打印）
+const SILENT_ROUTES = ['/health', '/api/node-status'];
+app.use((req, res, next) => {
+  if (SILENT_ROUTES.includes(req.path)) return next();
+  const start = Date.now();
+  const clientIp = getRequestIp(req);
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const status = res.statusCode;
+    const level = status >= 400 ? 'WARN' : 'INFO';
+    const label = status >= 400 ? ' ✗' : ' ✓';
+    console.log(`[${level}]${label} ${req.method} ${req.path} ${status} ${ms}ms | ip=${clientIp || '-'}`);
+  });
+  next();
+});
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -192,10 +216,13 @@ function computeDownloadMetrics(record) {
 
 function normalizeProxy(proxyId, payload, existing = {}) {
   const now = nowIso();
+  const baseUrl = typeof payload.baseUrl === 'string' && payload.baseUrl.trim()
+    ? payload.baseUrl.trim()
+    : (typeof existing.baseUrl === 'string' ? existing.baseUrl.trim() : '');
   return {
     proxyId,
     name: payload.name || existing.name || proxyId,
-    baseUrl: payload.baseUrl || existing.baseUrl || '',
+    baseUrl,
     proxyPath: payload.proxyPath || existing.proxyPath || '/proxy?url=',
     trackPath: payload.trackPath || existing.trackPath || '/track',
     provider: payload.provider || existing.provider || '',
@@ -236,6 +263,25 @@ function normalizeProxy(proxyId, payload, existing = {}) {
     lastHeartbeatAt: payload.lastHeartbeatAt || now,
     updatedAt: now
   };
+}
+
+function hasRoutableBaseUrl(proxy) {
+  if (!proxy?.baseUrl) return false;
+
+  try {
+    const url = new URL(proxy.baseUrl);
+    const hostname = url.hostname.toLowerCase();
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+    if (ALLOW_PRIVATE_PROXY_BASE_URL) return true;
+    if (['127.0.0.1', 'localhost', '0.0.0.0'].includes(hostname)) return false;
+    if (hostname === '::1' || hostname === '[::1]') return false;
+    if (hostname.startsWith('10.')) return false;
+    if (hostname.startsWith('192.168.')) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false;
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 async function lookupProxyLocation(baseUrl) {
@@ -299,7 +345,7 @@ function getProxyScore(proxy, requestedCountry = '') {
 }
 
 function pickBestProxy(store, options = {}) {
-  const proxies = Object.values(store.proxies).filter(isProxyHealthy);
+  const proxies = Object.values(store.proxies).filter(proxy => isProxyHealthy(proxy) && hasRoutableBaseUrl(proxy));
   if (!proxies.length) {
     return null;
   }
@@ -313,9 +359,26 @@ function pickBestProxy(store, options = {}) {
     .sort((a, b) => b.score - a.score);
 
   const topScore = scored[0]?.score ?? -Infinity;
-  const topCandidates = scored.filter(entry => Math.abs(entry.score - topScore) <= 5);
-  const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)] || scored[0];
-  return selected ? selected.proxy : null;
+  const minEligibleScore = topScore - 80;
+  const eligible = scored.filter(entry => entry.score >= minEligibleScore);
+  const floorScore = eligible[eligible.length - 1]?.score ?? 0;
+  const weighted = eligible.map(entry => {
+    const adjusted = Math.max(entry.score - floorScore, 0);
+    // Compress the score gap so the fastest node is preferred without starving other healthy nodes.
+    const weight = Math.max(1, Math.sqrt(adjusted + 1));
+    return { ...entry, weight };
+  });
+  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const entry of weighted) {
+    random -= entry.weight;
+    if (random <= 0) {
+      return entry.proxy;
+    }
+  }
+
+  return weighted[0]?.proxy || scored[0]?.proxy || null;
 }
 
 function appendProxyDownloadEvent(store, proxyId, payload) {
@@ -443,13 +506,22 @@ function sanitizeProxyResponse(proxy) {
     connectivity: proxy.connectivity,
     traffic: proxy.traffic,
     capabilities: proxy.capabilities,
-    lastHeartbeatAt: proxy.lastHeartbeatAt
+    lastHeartbeatAt: proxy.lastHeartbeatAt,
+    routable: hasRoutableBaseUrl(proxy)
   };
 }
 
 async function validateProxyBaseUrl(baseUrl) {
   try {
     const parsed = new URL(baseUrl);
+    if (ALLOW_PRIVATE_PROXY_BASE_URL) {
+      return {
+        ok: true,
+        checkedUrl: `${baseUrl}/health`,
+        attempts: 0,
+        note: 'private baseUrl validation allowed by env'
+      };
+    }
     if (['127.0.0.1', 'localhost'].includes(parsed.hostname)) {
       return {
         ok: true,
@@ -506,7 +578,13 @@ async function validateProxyBaseUrl(baseUrl) {
 }
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'proxy-registry', now: nowIso() });
+  res.json({
+    ok: true,
+    service: 'proxy-registry',
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES,
+    now: nowIso()
+  });
 });
 
 app.post('/api/proxies/register', (req, res) => {
@@ -514,15 +592,21 @@ app.post('/api/proxies/register', (req, res) => {
   if (!proxyId || !baseUrl) {
     return res.status(400).json({ error: 'Missing proxyId or baseUrl' });
   }
+  if (!hasRoutableBaseUrl({ baseUrl })) {
+    return res.status(400).json({ error: `Invalid public baseUrl: ${baseUrl}` });
+  }
 
   Promise.all([validateProxyBaseUrl(baseUrl), lookupProxyLocation(baseUrl)]).then(([validation, lookedUpLocation]) => {
     if (!validation.ok) {
+      console.warn(`[Register] 代理注册失败: proxyId=${proxyId} baseUrl=${baseUrl} reason=${validation.error}`);
       return res.status(400).json({
         error: validation.error
       });
     }
 
     const store = readStore();
+    const isNew = !store.proxies[proxyId];
+    console.log(`[Register] 代理${isNew ? '注册' : '更新'}: proxyId=${proxyId} baseUrl=${baseUrl} name=${req.body.name || '-'} provider=${req.body.provider || '-'} location=${JSON.stringify(lookedUpLocation)} validation=${JSON.stringify(validation)}`);
     const proxy = normalizeProxy(proxyId, {
       ...req.body,
       location: hasLocation(req.body.location) ? req.body.location : lookedUpLocation
@@ -562,6 +646,11 @@ app.post('/api/proxies/heartbeat', (req, res) => {
   proxy.lastHeartbeatAt = req.body.lastHeartbeatAt || nowIso();
   store.proxies[proxyId] = proxy;
 
+  const isNew = !existing.proxyId;
+  if (isNew) {
+    console.log(`[Heartbeat] 新代理上线: proxyId=${proxyId} baseUrl=${proxy.baseUrl} name=${proxy.name}`);
+  }
+
   if (req.body.trafficSnapshot) {
     store.trafficSnapshots.unshift({
       id: crypto.randomUUID(),
@@ -590,33 +679,54 @@ app.post('/api/proxies/download-events', (req, res) => {
   const store = readStore();
   appendProxyDownloadEvent(store, proxyId, req.body);
   writeStore(store);
+
+  const evt = req.body;
+  if (evt.status === 'completed') {
+    console.log(`[Event] 下载完成: ${evt.image}:${evt.tag} bytes=${(evt.bytes / 1024 / 1024).toFixed(1)}MB fromCache=${evt.fromCache} proxyId=${proxyId}`);
+  } else if (evt.status === 'failed') {
+    console.warn(`[Event] 下载失败: ${evt.image}:${evt.tag} proxyId=${proxyId}`);
+  }
+
   res.json({ success: true });
 });
 
 app.get('/api/proxies/select', (req, res) => {
+  const clientIp = getRequestIp(req);
+  const countryCode = req.query.countryCode || req.query.region || '';
   const store = readStore();
-  const proxy = pickBestProxy(store, {
-    countryCode: req.query.countryCode || req.query.region
-  });
+  const proxy = pickBestProxy(store, { countryCode });
 
   if (!proxy) {
+    console.warn(`[Select] 无可用代理 | ip=${clientIp} region=${countryCode || '-'} onlineCount=${Object.keys(store.proxies).length}`);
     return res.status(404).json({ error: 'No healthy proxy available' });
   }
+
+  console.log(`[Select] 分配代理: proxyId=${proxy.proxyId} baseUrl=${proxy.baseUrl} location=${JSON.stringify(proxy.location)} score=${getProxyScore(proxy, countryCode)} | ip=${clientIp} region=${countryCode || '-'}`);
 
   res.json({
     success: true,
     proxy: sanitizeProxyResponse(proxy),
-    strategy: 'weighted-score-with-country-bonus-and-random-tie-break'
+    strategy: 'weighted-score-with-country-bonus-and-weighted-random',
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES
   });
 });
 
 app.get('/api/proxies', (req, res) => {
+  const clientIp = getRequestIp(req);
   const store = readStore();
+  const healthyCount = Object.values(store.proxies).filter(isProxyHealthy).length;
+  console.log(`[Proxies] 查询代理列表: ${healthyCount}/${Object.keys(store.proxies).length} healthy | ip=${clientIp}`);
   const proxies = Object.values(store.proxies).map(proxy => ({
     ...sanitizeProxyResponse(proxy),
     healthy: isProxyHealthy(proxy)
   }));
-  res.json({ total: proxies.length, proxies });
+  res.json({
+    total: proxies.length,
+    proxies,
+    apiVersion: REGISTRY_API_VERSION,
+    capabilities: REGISTRY_CAPABILITIES
+  });
 });
 
 app.post('/api/downloads/start', async (req, res) => {
@@ -640,6 +750,8 @@ app.post('/api/downloads/start', async (req, res) => {
   store.downloads[downloadId] = download;
   writeStore(store);
   updateLegacyDownloads(download);
+
+  console.log(`[Download] 开始: ${image}:${tag} arch=${arch} downloadId=${downloadId} proxyId=${req.body.proxyId || '-'} plugin=${req.body.pluginVersion || '-'} | ip=${clientIp} geo=${JSON.stringify(clientGeo)}`);
 
   res.json({ success: true, download });
 });
@@ -665,6 +777,8 @@ app.post('/api/downloads/complete', (req, res) => {
   appendDownloadEvent(download, 'completed', { proxyId: req.body.proxyId });
   store.downloads[downloadId] = download;
   writeStore(store);
+
+  console.log(`[Download] 完成: ${download.image}:${download.tag} size=${(download.size / 1024 / 1024).toFixed(1)}MB duration=${download.durationMs}ms speed=${(download.averageSpeedBytes / 1024).toFixed(0)}KB/s downloadId=${downloadId} proxyId=${req.body.proxyId || '-'}`);
 
   res.json({ success: true, download });
 });
@@ -693,6 +807,8 @@ app.post('/api/downloads/fail', (req, res) => {
   });
   store.downloads[downloadId] = download;
   writeStore(store);
+
+  console.warn(`[Download] 失败: ${download.image}:${download.tag} error=${req.body.error || 'unknown'} downloadId=${downloadId} proxyId=${req.body.proxyId || '-'}`);
 
   res.json({ success: true, download });
 });
@@ -772,4 +888,6 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Proxy registry service running at http://localhost:${PORT}`);
+  console.log(`[Config] HEARTBEAT_STALE=${HEARTBEAT_STALE_MS}ms PROXY_VALIDATION_TIMEOUT=${PROXY_VALIDATION_TIMEOUT_MS}ms ALLOW_PRIVATE=${ALLOW_PRIVATE_PROXY_BASE_URL}`);
+  console.log(`[Config] DATA_DIR=${DATA_DIR}`);
 });

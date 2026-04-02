@@ -82,6 +82,26 @@ async function refreshToken(image, proxyRoute = null, requestMeta = null) {
 let activeDownloadCount = 0;
 const KEEPALIVE_ALARM_NAME = 'docker-download-keepalive';
 
+function ensureTaskKeepAlive(task) {
+  if (task && task.keepAliveStarted) {
+    return;
+  }
+  startKeepAlive();
+  if (task) {
+    task.keepAliveStarted = true;
+  }
+}
+
+function releaseTaskKeepAlive(task) {
+  if (task && !task.keepAliveStarted) {
+    return;
+  }
+  stopKeepAlive();
+  if (task) {
+    task.keepAliveStarted = false;
+  }
+}
+
 /**
  * 启动保活机制
  * 使用 chrome.alarms 实现更可靠的保活
@@ -124,7 +144,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 });
 
 // ==================== 超时控制配置 ====================
-const FETCH_TIMEOUT = 300000; // 单次请求超时：300 秒（与代理服务器保持一致）
+const FETCH_TIMEOUT = 1800000; // 单次请求超时：1800 秒，与代理服务器保持一致
+const LAYER_DOWNLOAD_CONCURRENCY = 2; // 稳定性优先：降低单镜像层并发下载数
+const GEO_LOOKUP_TIMEOUT_MS = 8000;
+const PROXY_REGISTRY_TIMEOUT_MS = 8000;
+const LIFECYCLE_REPORT_TIMEOUT_MS = 5000;
+const PREPARING_STAGE_TIMEOUT_MS = 30000;
 
 /**
  * 检测是否需要使用代理（仅限中国出口IP）
@@ -133,8 +158,9 @@ async function checkGeoLocation() {
   if (isChinaIP !== null) return isChinaIP;
 
   try {
-    const resp = await fetch('http://ip-api.com/json/');
+    const resp = await fetchWithTimeout('http://ip-api.com/json/', {}, GEO_LOOKUP_TIMEOUT_MS);
     const data = await resp.json();
+    if (resp._cleanupTimeout) resp._cleanupTimeout();
     geoInfo = data;
     isChinaIP = (data.countryCode === 'CN');
     console.log(`[GeoCheck] Country: ${data.countryCode}, Use Proxy: ${isChinaIP}`);
@@ -169,10 +195,9 @@ function buildRegistryUrl(pathname) {
 async function requestBestProxy(downloadMeta) {
   const geo = await getGeoInfo();
   const registryUrl = buildRegistryUrl(PROXY_REGISTRY_CONFIG.select);
-  const fallbackProxy = getFallbackProxyConfig(await checkGeoLocation());
 
   if (!registryUrl) {
-    return fallbackProxy;
+    throw new Error('代理记录服务未配置');
   }
 
   try {
@@ -190,18 +215,20 @@ async function requestBestProxy(downloadMeta) {
       url.searchParams.set('arch', downloadMeta.arch);
     }
 
-    const resp = await fetch(url.toString());
+    const resp = await fetchWithTimeout(url.toString(), {}, PROXY_REGISTRY_TIMEOUT_MS);
     if (!resp.ok) {
-      throw new Error(`select proxy failed: ${resp.status}`);
+      const errText = await readErrorBody(resp);
+      throw new Error(`代理记录服务返回 ${resp.status}: ${errText}`);
     }
     const data = await resp.json();
+    if (resp._cleanupTimeout) resp._cleanupTimeout();
     if (data && data.proxy && data.proxy.baseUrl) {
       return data.proxy;
     }
-    throw new Error('proxy response missing baseUrl');
+    throw new Error('代理记录服务没有返回已注册代理');
   } catch (err) {
-    console.warn('[ProxyRegistry] Falling back to static proxy config:', err.message);
-    return fallbackProxy;
+    console.error('[ProxyRegistry] Failed to acquire registered proxy:', err.message);
+    throw new Error(`无法从代理记录服务获取代理: ${err.message}`);
   }
 }
 
@@ -220,11 +247,12 @@ async function reportDownloadLifecycle(eventType, payload) {
   if (!endpoint) return;
 
   try {
-    await fetch(buildRegistryUrl(endpoint), {
+    const resp = await fetchWithTimeout(buildRegistryUrl(endpoint), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, LIFECYCLE_REPORT_TIMEOUT_MS);
+    if (resp._cleanupTimeout) resp._cleanupTimeout();
     console.log(`[Track] Reported ${eventType}: ${payload.image}:${payload.tag} (${payload.arch})`);
   } catch (err) {
     console.error(`[Track] Failed to report ${eventType}:`, err);
@@ -236,23 +264,39 @@ async function reportDownloadLifecycle(eventType, payload) {
  * @throws {Error} 如果响应包含 Docker Registry 错误（如 UNAUTHORIZED），抛出带状态的错误
  */
 async function parseResponse(resp, responseType) {
-  if (responseType === 'json') {
-    const data = await resp.json();
-    // 检查是否是 Docker Registry 错误响应
-    if (data && data.errors && Array.isArray(data.errors)) {
-      const errorMsg = data.errors.map(e => e.message || e.code).join(', ');
-      const hasAuthError = data.errors.some(e => e.code === 'UNAUTHORIZED');
-      if (hasAuthError) {
-        const error = new Error(`401 UNAUTHORIZED: ${errorMsg}`);
-        error.status = 401;
-        error.isAuthError = true;
-        throw error;
+  try {
+    if (responseType === 'json') {
+      const data = await resp.json();
+      // 检查是否是 Docker Registry 错误响应
+      if (data && data.errors && Array.isArray(data.errors)) {
+        const errorMsg = data.errors.map(e => e.message || e.code).join(', ');
+        const hasAuthError = data.errors.some(e => e.code === 'UNAUTHORIZED');
+        if (hasAuthError) {
+          const error = new Error(`401 UNAUTHORIZED: ${errorMsg}`);
+          error.status = 401;
+          error.isAuthError = true;
+          throw error;
+        }
       }
+      return data;
     }
-    return data;
+    if (responseType === 'arrayBuffer') return await resp.arrayBuffer();
+    return await resp.text();
+  } finally {
+    // body 读取完成（无论成功还是失败），清理超时计时器
+    if (resp._cleanupTimeout) resp._cleanupTimeout();
   }
-  if (responseType === 'arrayBuffer') return await resp.arrayBuffer();
-  return await resp.text();
+}
+
+// 读取错误响应体并清理超时
+async function readErrorBody(resp) {
+  try {
+    return await resp.text();
+  } catch (_) {
+    return resp.statusText;
+  } finally {
+    if (resp._cleanupTimeout) resp._cleanupTimeout();
+  }
 }
 
 /**
@@ -274,7 +318,10 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
       ...options,
       signal: controller.signal
     });
-    clearTimeout(timeoutId);
+    // 注意：不在这里 clearTimeout
+    // 超时保护需要覆盖整个请求生命周期（包括 body 读取阶段）
+    // 调用方负责在 body 读取完成后调用 resp._cleanupTimeout()
+    resp._cleanupTimeout = () => clearTimeout(timeoutId);
     return resp;
   } catch (err) {
     clearTimeout(timeoutId);
@@ -293,10 +340,12 @@ async function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
 }
 
 // 代理fetch通过中转服务器。
-// 默认优先使用用户当前网络直接访问 Docker Hub，仅在直连失败时回退到代理。
+// 一旦调用方明确要求走代理，就严格只走代理，不再回退直连。
 async function proxyFetch(url, options = {}, responseType = 'json', timeout = FETCH_TIMEOUT, skipCache = false, strategyMode = 'auto', proxyRoute = null, requestMeta = null) {
   const isDockerRegistry = /docker\.io|auth\.docker\.io|cloudflare\.docker\.com|docker-images-prod\//.test(url);
   const isCloudflareRegistry = /production\.cloudflare\.docker\.com/.test(url);
+  const hasExplicitProxyRoute = !!(proxyRoute && (proxyRoute.baseUrl || proxyRoute.base));
+  const forceProxy = hasExplicitProxyRoute || strategyMode === 'proxy-only';
 
   // 检测地域（会话级别缓存）
   const isChina = await checkGeoLocation();
@@ -321,7 +370,9 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
   // Docker Hub 相关请求也优先直连，只有直连失败才回退代理。
   const preferDirect = isDockerRegistry || isCloudflareRegistry || !useProxy;
   let strategies = preferDirect ? ['direct', 'proxy'] : ['proxy', 'direct'];
-  if (strategyMode === 'direct-only') {
+  if (forceProxy) {
+    strategies = ['proxy'];
+  } else if (strategyMode === 'direct-only') {
     strategies = ['direct'];
   } else if (strategyMode === 'proxy-only') {
     strategies = ['proxy'];
@@ -343,7 +394,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     if (requestMeta.arch) options.headers['X-Arch'] = requestMeta.arch;
   }
 
-  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, StrategyMode: ${strategyMode}, DockerHubRequest: ${isDockerRegistry || isCloudflareRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
+  console.log(`[ProxyFetch] Starting fetch for ${url}. Strategy order: ${strategies.join(' -> ')}, StrategyMode: ${strategyMode}, ForcedProxy: ${forceProxy}, DockerHubRequest: ${isDockerRegistry || isCloudflareRegistry}, Timeout: ${timeout}ms, SkipCache: ${skipCache}, SkipCacheByHeader: ${skipCache}`);
 
   // 根据地域获取动态代理配置
   // 注意：502错误检测和代理切换已在前面处理（第247-257行）
@@ -390,27 +441,6 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
     }
   }
 
-  async function tryDirectFallbackOnRateLimit() {
-    console.warn(`[ProxyFetch] Proxy rate limited for ${url}, trying DIRECT fallback`);
-    const resp = await fetchWithTimeout(url, options, timeout);
-
-    if (resp.ok) {
-      console.log('[ProxyFetch] DIRECT fallback success after proxy 429');
-      await recordProxyUsage('direct', url, 'fallback-after-429');
-      return await parseResponse(resp, responseType);
-    }
-
-    const errText = await resp.text().catch(() => resp.statusText);
-    if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
-      const error = new Error(`401 UNAUTHORIZED: ${errText}`);
-      error.status = 401;
-      error.isAuthError = true;
-      throw error;
-    }
-
-    throw new Error(`${resp.status} ${errText}`);
-  }
-
   for (const strategy of strategies) {
     try {
       if (strategy === 'proxy') {
@@ -424,11 +454,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
           await recordProxyUsage('proxy', actualProxyUrl);
           return await parseResponse(resp, responseType);
         } else {
-          const errText = await resp.text().catch(() => resp.statusText);
-          if ((strategyMode === 'proxy-only') && (isDockerRegistry || isCloudflareRegistry) && resp.status === 429) {
-            await recordProxyUsage('proxy', actualProxyUrl, 'rate-limited');
-            return await tryDirectFallbackOnRateLimit();
-          }
+          const errText = await readErrorBody(resp);
           // 检查是否是认证错误
           if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
             const error = new Error(`401 UNAUTHORIZED: ${errText}`);
@@ -447,7 +473,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
           await recordProxyUsage('direct', url);
           return await parseResponse(resp, responseType);
         } else {
-          const errText = await resp.text().catch(() => resp.statusText);
+          const errText = await readErrorBody(resp);
           // 检查是否是认证错误
           if (resp.status === 401 || errText.includes('UNAUTHORIZED')) {
             const error = new Error(`401 UNAUTHORIZED: ${errText}`);
@@ -462,6 +488,8 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
       console.warn(`[ProxyFetch] ${strategy.toUpperCase()} failed: ${err.message}`);
       if (strategy === 'direct') {
         await recordDirectFailure(err.message);
+      } else if (strategy === 'proxy') {
+        await recordProxyUsage('proxy', dynamicProxyBase + encodeURIComponent(proxyUrl), 'failed');
       }
       // 如果是认证错误，立即抛出，不尝试其他策略
       if (err.isAuthError) {
@@ -491,6 +519,7 @@ async function proxyFetch(url, options = {}, responseType = 'json', timeout = FE
 chrome.storage.local.get(['dockerDownloadTasks', 'dockerDownloadHistory'], data => {
   tasks = data.dockerDownloadTasks || [];
   history = data.dockerDownloadHistory || [];
+  reconcilePersistedTasks();
 });
 
 function isDockerHubTagsUrl(url) {
@@ -525,6 +554,32 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+function reconcilePersistedTasks() {
+  const activeStatuses = new Set(['preparing', 'downloading', 'packing', 'packaging']);
+  const staleTasks = tasks.filter(task => activeStatuses.has(task.status) && !task.history);
+  if (!staleTasks.length) {
+    return;
+  }
+
+  for (const task of staleTasks) {
+    task.status = 'failed';
+    task.errorMessage = task.errorMessage || '扩展后台已重启，任务已中断';
+    task.running = 0;
+    task.pending = 0;
+    task.updatedAt = Date.now();
+    task.endTime = Date.now();
+    task.keepAliveStarted = false;
+    history = history.filter(h => taskKey(h.image, h.tag, h.arch) !== taskKey(task.image, task.tag, task.arch));
+    history.unshift({ ...task, history: true });
+  }
+
+  if (history.length > 100) {
+    history.length = 100;
+  }
+  tasks = tasks.filter(task => !staleTasks.includes(task));
+  syncTasks();
+}
+
 function syncTasks() {
   chrome.storage.local.set({ dockerDownloadTasks: tasks, dockerDownloadHistory: history });
   updateBadge();
@@ -539,6 +594,49 @@ function moveTaskToHistory(task) {
   if (history.length > 100) history.length = 100;
   tasks = tasks.filter(t => t.id !== task.id);
   syncTasks();
+}
+
+function notifyActiveTabDownloadStatus(message, status = 'progress') {
+  chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+    if (tabs && tabs[0]) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'download-status-update',
+        status,
+        message
+      });
+    }
+  });
+}
+
+function openDownloadHelperTab(url) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.create({ url, active: false }, (tab) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (!tab || !tab.id) {
+        reject(new Error('download helper tab was not created'));
+        return;
+      }
+      resolve(tab);
+    });
+  });
+}
+
+function finalizeCompletedTask(task) {
+  if (!task || task.history || task.status === 'completed') {
+    return;
+  }
+
+  task.status = 'completed';
+  task.finished = task.total;
+  task.running = 0;
+  task.pending = 0;
+  task.errorMessage = '';
+  task.endTime = Date.now();
+  task.updatedAt = Date.now();
+  moveTaskToHistory(task);
 }
 
 function updateBadge() {
@@ -799,7 +897,7 @@ async function fetchManifest(image, tagOrDigest, arch = 'amd64', proxyRoute = nu
  */
 async function downloadSingleLayer(image, layer, token, progressCallback, proxyRoute = null, requestMeta = null) {
   const url = `https://registry-1.docker.io/v2/${image}/blobs/${layer.digest}`;
-  const timeout = 300000; // 大文件下载使用 5 分钟超时
+  const timeout = FETCH_TIMEOUT; // 大文件下载与代理服务使用相同超时
   const shortDigest = layer.digest.substring(7, 19);
 
   // 检查是否配置了Docker Hub认证
@@ -809,7 +907,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback, proxyR
   const useAuth = !!(auth.dockerUsername && auth.dockerPassword);
 
   // 最大重试次数和退避时间
-  const maxRetries = 5;
+  const maxRetries = 8;
   const baseDelay = 1000; // 1秒基础延迟
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -865,7 +963,21 @@ async function downloadSingleLayer(image, layer, token, progressCallback, proxyR
         continue; // 直接进行下一次重试
       }
 
-       // 网络错误（Connection refused, DNS resolution failed 等）需要等待
+      // 客户端到代理链路抖动（扩展侧常见为 Failed to fetch）等待后重试
+      if (err.message && (
+        err.message.includes('Failed to fetch') ||
+        err.message.includes('Network request failed') ||
+        err.message.includes('ERR_CONNECTION_RESET') ||
+        err.message.includes('ERR_CONNECTION_CLOSED') ||
+        err.message.includes('ERR_HTTP2_PROTOCOL_ERROR') ||
+        err.message.includes('客户端连接已断开')
+      )) {
+        console.log(`[Download] Client/proxy connection jitter, waiting ${retryDelay / 1000}s before retry...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+
+      // 网络错误（Connection refused, DNS resolution failed 等）需要等待
       if (err.message && (
         err.message.includes('Connection refused') ||
         err.message.includes('DNS resolution failed') ||
@@ -881,7 +993,7 @@ async function downloadSingleLayer(image, layer, token, progressCallback, proxyR
       if (err.message && (
         err.message.includes('502') ||
         err.message.includes('Bad Gateway') ||
-        err.message.includes('请求超时 (300秒)') // 特定于我们的超时提示
+        err.message.includes(`请求超时 (${FETCH_TIMEOUT / 1000}秒)`) // 特定于我们的超时提示
       )) {
         console.log(`[Download] 502 Bad Gateway - Proxy restart detected, waiting ${retryDelay / 1000}s before retry...`);
 
@@ -915,7 +1027,7 @@ async function runDownloadTask(task) {
   console.log('[Docker Download Plugin] Starting runDownloadTask for:', task.image, task.tag, task.arch);
 
   // 启动保活机制，防止 Service Worker 被终止
-  startKeepAlive();
+  ensureTaskKeepAlive(task);
 
   task.status = 'downloading';
   task.finished = 0;
@@ -925,6 +1037,13 @@ async function runDownloadTask(task) {
   task.startTime = Date.now();
   syncTasks();
   try {
+    const recalcTaskStats = () => {
+      task.finished = task.layers.filter(l => l.status === 'done').length;
+      task.running = task.layers.filter(l => l.status === 'downloading').length;
+      task.pending = task.layers.filter(l => l.status === 'pending').length;
+      task.updatedAt = Date.now();
+    };
+
     console.log('[Docker Download Plugin] Getting token for:', task.image);
     // 使用缓存的 token 获取函数，会自动检查过期
     const requestMeta = {
@@ -951,102 +1070,94 @@ async function runDownloadTask(task) {
       console.log('[Docker Download Plugin] Config file downloaded');
     } catch (err) {
       console.error('[Docker Download Plugin] Config download failed:', err);
-      task.status = 'failed';
-      task.errorMessage = `下载配置文件失败: ${err.message}`;
-      moveTaskToHistory(task);
-      return;
+      throw new Error(`下载配置文件失败: ${err.message}`);
     }
 
+    const layerIdByIndex = new Array(task.layers.length);
     for (let i = 0; i < task.layers.length; i++) {
-      if (task.canceled) {
-        throw new Error('Task canceled by user');
-      }
-      task.layers[i].status = 'downloading';
-      task.running = 1;
-      syncTasks();
+      const layerId = await sha256Hash(`${parentId}\n${task.layers[i].digest}\n`);
+      parentId = layerId;
+      layerIdByIndex[i] = layerId;
+    }
 
-      // 在下载每个 layer 前，检查 token 是否即将过期，主动刷新
-      token = await getCachedDockerToken(task.image, false, task.proxyRoute, requestMeta);
-      console.log('[Docker Download Plugin] Token refreshed before downloading layer:', task.layers[i].digest.substring(0, 16));
+    const downloadedLayersByIndex = new Array(task.layers.length);
+    const workerCount = Math.max(1, Math.min(LAYER_DOWNLOAD_CONCURRENCY, task.layers.length));
+    let nextLayerIndex = 0;
+    let firstError = null;
 
-      // 向content-script发送下载进度更新
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs && tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'download-status-update',
-            status: 'progress',
-            message: `正在下载 ${task.image}:${task.tag} (${task.arch})，进度: ${i + 1}/${task.layers.length}`
-          });
-        }
-      });
+    async function layerWorker(workerId) {
+      while (true) {
+        if (task.canceled) return;
+        if (firstError) return;
 
-      // 下载单层（内部已包含完整的重试机制）
-      try {
-        const buf = await downloadSingleLayer(task.image, task.layers[i], token, null, task.proxyRoute, requestMeta);
+        const layerIndex = nextLayerIndex;
+        nextLayerIndex++;
+        if (layerIndex >= task.layers.length) return;
 
-        // 生成layer ID
-        const layerId = await sha256Hash(`${parentId}\n${task.layers[i].digest}\n`);
-        parentId = layerId;
+        const currentLayer = task.layers[layerIndex];
+        currentLayer.status = 'downloading';
+        recalcTaskStats();
+        syncTasks();
 
-        // 保存下载的数据
-        downloadedLayers.push({
-          layerData: buf,
-          layerId: layerId,
-          digest: task.layers[i].digest
-        });
-
-        task.layers[i].status = 'done';
-      } catch (err) {
-        task.layers[i].status = 'failed';
-        task.status = 'failed';
-        task.errorMessage = `下载层 ${task.layers[i].digest.substring(7, 19)} 失败: ${err.message}`;
-        moveTaskToHistory(task);
-
-        // 向content-script发送下载失败消息
         chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
           if (tabs && tabs[0]) {
             chrome.tabs.sendMessage(tabs[0].id, {
               type: 'download-status-update',
-              status: 'error',
-              message: `下载失败: ${err.message}`
+              status: 'progress',
+              message: `正在并行下载 ${task.image}:${task.tag} (${task.arch})，进度: ${task.finished}/${task.layers.length}，并发: ${task.running}/${workerCount}`
             });
           }
         });
 
-        throw err;
+        try {
+          const buf = await downloadSingleLayer(task.image, currentLayer, token, null, task.proxyRoute, requestMeta);
+          downloadedLayersByIndex[layerIndex] = {
+            layerData: buf,
+            layerId: layerIdByIndex[layerIndex],
+            digest: currentLayer.digest
+          };
+          currentLayer.status = 'done';
+        } catch (err) {
+          currentLayer.status = 'failed';
+          if (!firstError) {
+            firstError = new Error(`下载层 ${currentLayer.digest.substring(7, 19)} 失败: ${err.message}`);
+            task.status = 'failed';
+            task.errorMessage = firstError.message;
+            task.updatedAt = Date.now();
+            task.canceled = true;
+          }
+        } finally {
+          recalcTaskStats();
+          syncTasks();
+        }
       }
-      task.finished = task.layers.filter(l => l.status === 'done').length;
-      task.running = 0;
-      task.pending = task.layers.filter(l => l.status === 'pending').length;
-      syncTasks();
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, (_, idx) => layerWorker(idx + 1)));
+
+    if (task.canceled) {
+      throw new Error('Task canceled by user');
+    }
+    if (firstError) {
+      throw firstError;
+    }
+
+    for (let i = 0; i < downloadedLayersByIndex.length; i++) {
+      const item = downloadedLayersByIndex[i];
+      if (!item) {
+        throw new Error(`层下载结果缺失: index=${i}`);
+      }
+      downloadedLayers.push(item);
     }
 
     // 打包为tar文件
     task.status = 'packaging';
     syncTasks();
 
-    // 向content-script发送打包状态更新
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: 'download-status-update',
-          status: 'progress',
-          message: `${task.image}:${task.tag} (${task.arch}) 下载完成，正在打包文件...`
-        });
-      }
-    });
+    notifyActiveTabDownloadStatus(`${task.image}:${task.tag} (${task.arch}) 下载完成，正在打包文件...`, 'progress');
 
     try {
-      // 向content-script发送打包状态更新
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs && tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'download-status-update',
-            status: 'progress',
-            message: `${task.image}:${task.tag} (${task.arch}) 下载完成，正在打包文件...`
-          });
-        }
-      });
+      notifyActiveTabDownloadStatus(`${task.image}:${task.tag} (${task.arch}) 下载完成，正在打包文件...`, 'progress');
 
       // 使用全局函数packToTar（从docker-download.js中获取）
 
@@ -1065,64 +1176,29 @@ async function runDownloadTask(task) {
 
       await storeBlobInDB(blobKey, tarBlob);
 
-      // 打开中转页面触发下载
-      // 不需要active: true，后台打开即可？Chrome限制可能要求active，先试后台
-      chrome.tabs.create({
-        url: `download.html?key=${encodeURIComponent(blobKey)}&filename=${encodeURIComponent(filename)}`,
-        active: false
-      }, (tab) => {
-        // 任务在tab中处理
-        // 我们在这里标记background任务完成
-        // 实际上无法得知saveAs是否取消，但至少打包完成
-        console.log('[Download] Opened download helper tab:', tab.id);
-
-        task.status = 'completed';
-        task.endTime = Date.now();
-        moveTaskToHistory(task);
-        reportDownloadLifecycle('complete', {
-          downloadId: task.downloadId,
-          image: task.image,
-          tag: task.tag,
-          arch: task.arch,
-          size: task.manifest.layers.reduce((sum, layer) => sum + Number(layer.size || 0), 0),
-          proxyId: task.proxyRoute?.proxyId || '',
-          selectedProxy: task.proxyRoute || null,
-          completedAt: new Date().toISOString()
-        });
-
-        // 向content-script发送下载成功消息 (打包完成)
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-          if (tabs && tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              type: 'download-status-update',
-              status: 'success',
-              message: `打包完成，正在启动下载: ${task.image}:${task.tag} (${task.arch})`
-            });
-          }
-        });
-      });
+      const downloadHelperTab = await openDownloadHelperTab(
+        `download.html?key=${encodeURIComponent(blobKey)}&filename=${encodeURIComponent(filename)}`
+      );
+      console.log('[Download] Opened download helper tab:', downloadHelperTab.id);
 
     } catch (error) {
-      // 向content-script发送打包失败消息
-      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs && tabs[0]) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'download-status-update',
-            status: 'error',
-            message: `打包文件失败: ${error.message}`
-          });
-        }
-      });
+      notifyActiveTabDownloadStatus(`打包文件失败: ${error.message}`, 'error');
 
       throw error;
     }
 
-    task.status = 'completed';
-    task.finished = task.total;
-    task.running = 0;
-    task.pending = 0;
-    task.endTime = Date.now();
-    syncTasks();
+    finalizeCompletedTask(task);
+    reportDownloadLifecycle('complete', {
+      downloadId: task.downloadId,
+      image: task.image,
+      tag: task.tag,
+      arch: task.arch,
+      size: task.manifest.layers.reduce((sum, layer) => sum + Number(layer.size || 0), 0),
+      proxyId: task.proxyRoute?.proxyId || '',
+      selectedProxy: task.proxyRoute || null,
+      completedAt: new Date().toISOString()
+    });
+    notifyActiveTabDownloadStatus(`打包完成，正在启动下载: ${task.image}:${task.tag} (${task.arch})`, 'success');
   } catch (err) {
     task.status = 'failed';
     task.errorMessage = err.message || '下载过程中发生未知错误';
@@ -1140,7 +1216,7 @@ async function runDownloadTask(task) {
     });
   } finally {
     // 无论成功或失败，都要停止保活机制
-    stopKeepAlive();
+    releaseTaskKeepAlive(task);
   }
 }
 
@@ -1232,9 +1308,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       startTime: Date.now(),
       history: false
     };
+    ensureTaskKeepAlive(task);
     tasks.push(task);
     syncTasks();
     updateBadge(); // 更新图标角标
+
+    const preparingTimeoutId = setTimeout(() => {
+      const stillPreparing = tasks.some(t => t.id === task.id) && task.status === 'preparing';
+      if (!stillPreparing) return;
+      task.status = 'failed';
+      task.errorMessage = `准备阶段超时（${PREPARING_STAGE_TIMEOUT_MS / 1000}秒）`;
+      task.updatedAt = Date.now();
+      moveTaskToHistory(task);
+      reportDownloadLifecycle('fail', {
+        downloadId,
+        image: msg.image,
+        tag: msg.tag,
+        arch: msg.arch,
+        size: 0,
+        proxyId: task.proxyRoute?.proxyId || '',
+        selectedProxy: task.proxyRoute || null,
+        failedAt: new Date().toISOString(),
+        error: task.errorMessage
+      });
+      releaseTaskKeepAlive(task);
+    }, PREPARING_STAGE_TIMEOUT_MS);
 
     // 2. 尝试自动打开插件弹出层（需要 Chrome 127+）
     if (chrome.action && chrome.action.openPopup) {
@@ -1275,6 +1373,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         arch: msg.arch
       });
     }).then(manifest => {
+      clearTimeout(preparingTimeoutId);
       console.log('[Docker Download Plugin] Manifest fetched, updating task');
       task.status = 'downloading';
       task.manifest = manifest;
@@ -1294,6 +1393,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
       }, 0);
     }).catch(err => {
+      clearTimeout(preparingTimeoutId);
       console.error('[Docker Download Plugin] Manifest fetch failed:', err);
       task.status = 'failed';
       task.errorMessage = `获取清单失败: ${err.message}`;
@@ -1309,6 +1409,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         failedAt: new Date().toISOString(),
         error: task.errorMessage
       });
+      releaseTaskKeepAlive(task);
     });
 
     sendResponse({ ok: true });
