@@ -1136,6 +1136,8 @@ app.get('/proxy', async (req, res) => {
         requestCompleted = true;
         req.off('aborted', onClientAborted);
         res.off('close', onResponseClose);
+        // 正常完成的请求也必须释放 activeRequests，避免 token/manifest 小请求累计泄漏。
+        requestController.cleanup();
     };
 
     req.once('aborted', onClientAborted);
