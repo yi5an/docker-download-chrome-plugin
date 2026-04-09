@@ -14,6 +14,8 @@ const DATA_FILE = path.join(DATA_DIR, 'registry-data.json');
 const LEGACY_DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
 const HEARTBEAT_STALE_MS = parseInt(process.env.HEARTBEAT_STALE_MS || '180000', 10);
 const PROXY_VALIDATION_TIMEOUT_MS = parseInt(process.env.PROXY_VALIDATION_TIMEOUT_MS || '8000', 10);
+const PROXY_FAILURE_COOLDOWN_MS = parseInt(process.env.PROXY_FAILURE_COOLDOWN_MS || '600000', 10);
+const PROXY_CONSECUTIVE_FAILURE_THRESHOLD = parseInt(process.env.PROXY_CONSECUTIVE_FAILURE_THRESHOLD || '3', 10);
 const GEOIP_DB_PATH = process.env.GEOIP_DB_PATH || path.join(DATA_DIR, 'GeoLite2-City.mmdb');
 const ALLOW_PRIVATE_PROXY_BASE_URL = process.env.ALLOW_PRIVATE_PROXY_BASE_URL === 'true';
 const REGISTRY_API_VERSION = '2026-04-01';
@@ -174,17 +176,47 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function isProxyHealthy(proxy) {
+function getObservedHealth(proxy = {}) {
+  const observed = proxy.observedHealth || {};
+  return {
+    successCount: Number(observed.successCount || 0),
+    failureCount: Number(observed.failureCount || 0),
+    successRate: Number(observed.successRate || 0),
+    consecutiveFailures: Number(observed.consecutiveFailures || 0),
+    lastSuccessAt: observed.lastSuccessAt || null,
+    lastFailureAt: observed.lastFailureAt || null,
+    cooldownUntil: observed.cooldownUntil || null,
+    lastError: observed.lastError || '',
+    healthy: observed.healthy !== undefined ? !!observed.healthy : true
+  };
+}
+
+function isProxyOnline(proxy) {
   if (!proxy) return false;
   if (proxy.status !== 'online') return false;
   if (!proxy.lastHeartbeatAt) return false;
   return Date.now() - new Date(proxy.lastHeartbeatAt).getTime() <= HEARTBEAT_STALE_MS;
 }
 
+function isProxyHealthy(proxy) {
+  if (!isProxyOnline(proxy)) return false;
+  if (proxy.health?.healthy === false) return false;
+
+  const observed = getObservedHealth(proxy);
+  if (observed.cooldownUntil) {
+    const cooldownUntilMs = new Date(observed.cooldownUntil).getTime();
+    if (Number.isFinite(cooldownUntilMs) && cooldownUntilMs > Date.now()) {
+      return false;
+    }
+  }
+
+  return observed.healthy !== false;
+}
+
 function pruneOfflineProxies(store) {
   let changed = false;
   for (const [proxyId, proxy] of Object.entries(store.proxies || {})) {
-    if (!isProxyHealthy(proxy)) {
+    if (!isProxyOnline(proxy)) {
       delete store.proxies[proxyId];
       changed = true;
     }
@@ -252,6 +284,7 @@ function normalizeProxy(proxyId, payload, existing = {}) {
       failureCount: Number(payload.health?.failureCount || existing.health?.failureCount || 0),
       healthy: payload.health?.healthy !== undefined ? !!payload.health.healthy : (existing.health?.healthy ?? true)
     },
+    observedHealth: getObservedHealth(existing),
     capabilities: {
       blobCache: payload.capabilities?.blobCache !== undefined ? !!payload.capabilities.blobCache : (existing.capabilities?.blobCache ?? false),
       maxConcurrentRequests: Number(payload.capabilities?.maxConcurrentRequests || existing.capabilities?.maxConcurrentRequests || 0),
@@ -327,8 +360,13 @@ function getProxyScore(proxy, requestedCountry = '') {
   const bandwidth = Number(proxy.speedTest?.bandwidthMbps || 0);
   const latency = Number(proxy.speedTest?.latencyMs || 0);
   const totalBytes = Number(proxy.traffic?.totalBytes || 0);
-  const successRate = Number(proxy.health?.successRate || 0);
-  const failureCount = Number(proxy.health?.failureCount || 0);
+  const observed = getObservedHealth(proxy);
+  const successRate = observed.successCount + observed.failureCount > 0
+    ? observed.successRate
+    : Number(proxy.health?.successRate || 0);
+  const failureCount = observed.failureCount > 0
+    ? observed.failureCount
+    : Number(proxy.health?.failureCount || 0);
   const heartbeatAgeMs = proxy.lastHeartbeatAt ? (Date.now() - new Date(proxy.lastHeartbeatAt).getTime()) : Number.MAX_SAFE_INTEGER;
   const countryMatch = requestedCountry && proxy.location?.countryCode === requestedCountry ? 1 : 0;
 
@@ -408,6 +446,41 @@ function appendProxyDownloadEvent(store, proxyId, payload) {
     if (proxy.recentDownloads.length > 100) {
       proxy.recentDownloads.length = 100;
     }
+
+    const observed = getObservedHealth(proxy);
+    const status = String(entry.status || '').toLowerCase();
+    const isSuccess = ['completed', 'cache-hit'].includes(status);
+    const isFailure = ['failed', 'upstream-error', 'timeout', 'aborted'].includes(status) || status.includes('fail') || status.includes('error');
+
+    if (isSuccess) {
+      observed.successCount += 1;
+      observed.consecutiveFailures = 0;
+      observed.lastSuccessAt = entry.timestamp;
+      observed.cooldownUntil = null;
+      observed.lastError = '';
+      observed.healthy = true;
+    } else if (isFailure) {
+      observed.failureCount += 1;
+      observed.consecutiveFailures += 1;
+      observed.lastFailureAt = entry.timestamp;
+      observed.lastError = payload.error || entry.status || 'download failed';
+      if (observed.consecutiveFailures >= PROXY_CONSECUTIVE_FAILURE_THRESHOLD) {
+        observed.cooldownUntil = new Date(Date.now() + PROXY_FAILURE_COOLDOWN_MS).toISOString();
+        observed.healthy = false;
+      }
+    }
+
+    const totalObserved = observed.successCount + observed.failureCount;
+    observed.successRate = totalObserved > 0
+      ? Number((observed.successCount / totalObserved).toFixed(4))
+      : 0;
+
+    if (!observed.cooldownUntil || new Date(observed.cooldownUntil).getTime() <= Date.now()) {
+      observed.cooldownUntil = null;
+      observed.healthy = true;
+    }
+
+    proxy.observedHealth = observed;
   }
 }
 
@@ -505,6 +578,7 @@ function sanitizeProxyResponse(proxy) {
     status: proxy.status,
     connectivity: proxy.connectivity,
     traffic: proxy.traffic,
+    observedHealth: getObservedHealth(proxy),
     capabilities: proxy.capabilities,
     lastHeartbeatAt: proxy.lastHeartbeatAt,
     routable: hasRoutableBaseUrl(proxy)

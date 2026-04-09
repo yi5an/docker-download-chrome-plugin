@@ -13,7 +13,7 @@ NODE_ID="${PROXY_NODE_ID:-proxy-$(hostname)-${PORT}}"
 APP_NAME="${PM2_APP_NAME:-docker-download-proxy-${PORT}}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/docker-download-chrome-plugin}"
 REPO_URL="${REPO_URL:-https://github.com/yi5an/docker-download-chrome-plugin.git}"
-REPO_BRANCH="${REPO_BRANCH:-feat/proxy-registry-service}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
 
 if [[ -n "${SCRIPT_SOURCE}" && "${SCRIPT_SOURCE}" != "bash" && "${SCRIPT_SOURCE}" != "-" ]]; then
   SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_SOURCE}")" && pwd)"
@@ -115,6 +115,18 @@ if [[ "${NEEDS_DEPS_INSTALL}" == "true" ]]; then
   prompt_confirm "Continue installing dependencies? [y/N] "
 fi
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is required. Please install Node.js 14+ first."
+  exit 1
+fi
+
+NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)"
+if ! [[ "${NODE_MAJOR}" =~ ^[0-9]+$ ]] || [[ "${NODE_MAJOR}" -lt 14 ]]; then
+  echo "Detected Node.js $(node -v 2>/dev/null || echo unknown), but proxy service requires Node.js 14+."
+  echo "Please upgrade Node.js first, then rerun this installer."
+  exit 1
+fi
+
 npm install
 
 if ! command -v pm2 >/dev/null 2>&1; then
@@ -157,7 +169,7 @@ for _ in $(seq 1 20); do
     exit 1
   fi
 
-  APP_STATUS="$(pm2 jlist | node -e "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{const apps=JSON.parse(raw||'[]');const app=apps.find(item=>item.name===process.argv[1]);process.stdout.write(app?.pm2_env?.status||'missing');});" "${APP_NAME}")"
+  APP_STATUS="$(pm2 jlist | node -e "let raw='';process.stdin.on('data',function(d){raw+=d;}).on('end',function(){const apps=JSON.parse(raw||'[]');const app=apps.find(function(item){return item.name===process.argv[1];});const status=app&&app.pm2_env?app.pm2_env.status:'missing';process.stdout.write(status||'missing');});" "${APP_NAME}")"
   if [[ "${APP_STATUS}" != "online" && "${APP_STATUS}" != "launching" ]]; then
     echo "Proxy service exited during startup. Recent log:"
     pm2 logs "${APP_NAME}" --lines 80 --nostream || true

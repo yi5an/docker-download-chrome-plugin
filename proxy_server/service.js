@@ -506,7 +506,8 @@ async function registerProxyNode() {
         }
     });
     proxyRegistryState.registered = true;
-    console.log('[Registry] Proxy node registered:', result.validation?.checkedUrl || PROXY_PUBLIC_BASE_URL);
+    const checkedUrl = result && result.validation ? result.validation.checkedUrl : '';
+    console.log('[Registry] Proxy node registered:', checkedUrl || PROXY_PUBLIC_BASE_URL);
 }
 
 async function sendHeartbeat(options = {}) {
@@ -543,7 +544,8 @@ async function sendHeartbeat(options = {}) {
         },
         lastHeartbeatAt: new Date().toISOString()
     });
-    proxyRegistryState.lastHeartbeatAt = heartbeat?.proxy?.lastHeartbeatAt || new Date().toISOString();
+    const lastHeartbeatAt = heartbeat && heartbeat.proxy ? heartbeat.proxy.lastHeartbeatAt : '';
+    proxyRegistryState.lastHeartbeatAt = lastHeartbeatAt || new Date().toISOString();
 }
 
 function scheduleHeartbeat(delayMs = 2000) {
