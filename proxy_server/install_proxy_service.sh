@@ -88,9 +88,9 @@ if [[ -z "${SCRIPT_DIR}" || ! -f "${SCRIPT_DIR}/service.js" ]]; then
   fi
 
   if [[ -d "${INSTALL_ROOT}/.git" ]]; then
-    git -C "${INSTALL_ROOT}" fetch --all --prune
-    git -C "${INSTALL_ROOT}" checkout "${REPO_BRANCH}"
-    git -C "${INSTALL_ROOT}" pull --ff-only origin "${REPO_BRANCH}"
+    git -C "${INSTALL_ROOT}" remote set-url origin "${REPO_URL}"
+    git -C "${INSTALL_ROOT}" fetch origin "${REPO_BRANCH}" --depth 1
+    git -C "${INSTALL_ROOT}" checkout -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
   else
     mkdir -p "$(dirname "${INSTALL_ROOT}")"
     git clone --branch "${REPO_BRANCH}" --depth 1 "${REPO_URL}" "${INSTALL_ROOT}"
